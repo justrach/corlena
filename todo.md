@@ -14,6 +14,20 @@
 - [ ] Autoscroll near edges
 - [ ] Keyboard a11y + ARIA updates
 - [ ] Docs site + Svelte REPL links
+- [x] Unit tests: pinch/resample anchoring invariants (applyPinch, anchorResample)
+
+## Text Overlay & Export (MVP)
+- [ ] Add text overlay model and rendering in `/canvas`
+- [ ] Inline edit input overlay positioned over text; commit on blur/enter
+- [ ] Drag/scale/rotate gestures for text nodes
+- [ ] Styling: font family, size, weight, color, align, optional shadow/bg pill
+- [ ] Hit-testing and selection bounding box
+- [ ] Z-order above image overlay (simple add-on-top flow)
+- [ ] Export canvas to Blob (PNG/JPEG) with DPR handling
+- [ ] Download/share UX
+- [ ] Font loading and metrics stability
+- [ ] Unit tests: text bounds under transform; export DPR parity
+- [ ] Feature flag toggle
 
 ---
 
