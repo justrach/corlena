@@ -52,6 +52,8 @@
   // DOM refs
   let inputEl: HTMLInputElement | null = null;
   let frameEl: HTMLDivElement | null = null;
+  let hudEl: HTMLDivElement | null = null;
+  let hudPressing = false;
 
   // Canvas size handled by CSS aspect-ratio, but pixels by DPR
   function resize() {
@@ -63,6 +65,7 @@
     canvas.height = Math.floor(hCss * dpr);
     ctx?.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
     if (editingId != null) positionInputOverNode();
+    positionHud();
   }
 
   // Helpers for selected text node (editing takes precedence, else last interacted, else last in list)
@@ -79,6 +82,7 @@
       // Keep input positioned with font changes
       positionInputOverNode();
     }
+    positionHud();
   }
   function adjustFont(delta: number) {
     updateSelectedText(t => ({ ...t, fontSize: Math.max(8, Math.min(220, Math.round(t.fontSize + delta))) }));
@@ -108,12 +112,15 @@
       const x = T.x;
       const y = T.y;
       const displayText = (T.id === editingId ? editingValue : T.text);
-      // shadow for readability
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = 4;
-      ctx.lineWidth = 2;
-      ctx.fillText(displayText, x, y);
-      ctx.shadowBlur = 0;
+      // Draw text only if not currently editing this node
+      if (T.id !== editingId) {
+        // shadow for readability
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 4;
+        ctx.lineWidth = 2;
+        ctx.fillText(displayText, x, y);
+        ctx.shadowBlur = 0;
+      }
 
       // selection bbox (if editing or dragging)
       if (T.id === editingId || T.id === draggingId) {
@@ -148,6 +155,7 @@
       // If click is outside the input element, commit and hide
       const path = (e.composedPath && e.composedPath()) || [];
       if (inputEl && (path as EventTarget[]).includes(inputEl)) return;
+      if (hudEl && (path as EventTarget[]).includes(hudEl)) return;
       stopEdit(true);
     };
     window.addEventListener('pointerdown', onDocPointerDown, true);
@@ -201,6 +209,7 @@
     };
     texts = [...texts, node];
     startEdit(node);
+    queueMicrotask(positionHud);
   }
 
   function startEdit(node: TextNode) {
@@ -209,6 +218,7 @@
     // position input over text on next tick
     justOpened = true;
     queueMicrotask(positionInputOverNode);
+    queueMicrotask(positionHud);
   }
 
   function stopEdit(commit = true) {
@@ -220,6 +230,7 @@
       inputEl.style.display = 'none';
       inputEl.blur();
     }
+    queueMicrotask(positionHud);
   }
 
   let justOpened = false;
@@ -253,6 +264,30 @@
       inputEl.select();
       justOpened = false;
     }
+  }
+
+  function positionHud() {
+    if (!hudEl || !canvas) return;
+    const sel = getSelectedText();
+    if (!sel || !ctx) { hudEl.style.display = 'none'; return; }
+    // Measure selected text bbox
+    ctx.font = `${sel.fontWeight} ${sel.fontSize}px ${sel.fontFamily}`;
+    ctx.textAlign = sel.align;
+    const m = ctx.measureText((sel.id === editingId ? editingValue : sel.text) || ' ');
+    const width = Math.max(1, m.width);
+    const ascent = m.actualBoundingBoxAscent || sel.fontSize * 0.8;
+    const leftBase = sel.align === 'center' ? sel.x - width / 2 : sel.align === 'right' || sel.align === 'end' ? sel.x - width : sel.x;
+    const topBase = sel.y - ascent;
+    const rect = canvas.getBoundingClientRect();
+    let hudX = rect.left + leftBase + width / 2 - 48; // center HUD approx
+    let hudY = rect.top + topBase - 40; // above text
+    // Clamp within frame bounds if possible
+    const margin = 6;
+    hudX = Math.max(margin, Math.min(hudX, rect.right - rect.left - 96 - margin)) + rect.left - rect.left;
+    // Position with fixed coordinates
+    hudEl.style.display = 'flex';
+    hudEl.style.left = `${Math.round(hudX + rect.left)}px`;
+    hudEl.style.top = `${Math.round(hudY)}px`;
   }
 
   function onPointerDown(e: PointerEvent) {
@@ -398,6 +433,7 @@
           const ny = cy;
           return { ...t, fontSize: newSize, x: Math.round(nx), y: Math.round(ny) };
         });
+        positionHud();
       } else if (pinchTargetType === 'image') {
         imgs = imgs.map(L => {
           if (L.id !== pinchTargetId) return L;
@@ -417,6 +453,7 @@
     moved = Math.max(moved, Math.hypot(x - startPX, y - startPY));
     if (draggingType === 'text') {
       texts = texts.map(t => t.id === draggingId ? { ...t, x: Math.round(x - dragDX), y: Math.round(y - dragDY) } : t);
+      positionHud();
     } else if (draggingType === 'image') {
       imgs = imgs.map(L => L.id === draggingId ? { ...L, x: Math.round(x - dragDX), y: Math.round(y - dragDY) } : L);
     }
@@ -440,6 +477,7 @@
     }
     draggingId = null; draggingType = null; moved = 0;
     try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch {}
+    positionHud();
   }
 
   function onPointerCancel(e: PointerEvent) {
@@ -503,6 +541,7 @@
     }
     if (handled) {
       e.preventDefault();
+      positionHud();
     }
   }
 
@@ -529,6 +568,7 @@
   .frame { width: min(420px, 100%); aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a2a; background: #000; position: relative; }
   canvas { width: 100%; height: 100%; display: block; touch-action: none; background: #000; }
   .edit-input { position: fixed; z-index: 10; display: none; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(0,0,0,0.6); color: #fff; outline: none; }
+  .hud { position: fixed; z-index: 11; display: none; gap: 6px; align-items: center; padding: 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(24,24,24,0.8); backdrop-filter: blur(6px); }
   .note { color: #888; font-size: 12px; }
 </style>
 
@@ -560,7 +600,17 @@
 </div>
 
 <input class="edit-input" bind:this={inputEl}
-  on:blur={() => stopEdit(true)}
+  on:blur={() => { if (hudPressing) { queueMicrotask(() => inputEl?.focus()); return; } stopEdit(true); }}
   on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); stopEdit(true); } if (e.key === 'Escape') { e.preventDefault(); stopEdit(false); } }}
-  on:input={(e) => { editingValue = (e.target as HTMLInputElement).value; positionInputOverNode(); }}
+  on:input={(e) => { editingValue = (e.target as HTMLInputElement).value; positionInputOverNode(); positionHud(); }}
 />
+
+<div class="hud" bind:this={hudEl} role="toolbar" aria-label="Text controls"
+  on:pointerdown={(e) => { hudPressing = true; e.preventDefault(); }}
+  on:pointerup={() => { hudPressing = false; }}
+  on:pointercancel={() => { hudPressing = false; }}
+  on:pointerleave={() => { hudPressing = false; }}>
+  <button on:click={() => adjustFont(-2)} title="Smaller">A-</button>
+  <button on:click={() => adjustFont(+2)} title="Larger">A+</button>
+  <input type="color" on:input={(e) => setColor((e.target as HTMLInputElement).value)} title="Text color" />
+</div>
