@@ -16,6 +16,7 @@ export type DemoOptions = {
 
 type DemoHandle = {
   stop: () => void;
+  hitAt?: (x: number, y: number) => boolean; // returns true if a node is under CSS pixel coords
 };
 
 // Typed array layouts must match the WASM engine:
@@ -401,6 +402,9 @@ export async function startCanvasDemo(canvas: HTMLCanvasElement, opts: DemoOptio
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+    },
+    hitAt(x: number, y: number): boolean {
+      try { return hitNode(x, y) !== 0; } catch { return false; }
     }
   };
 }
