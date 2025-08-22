@@ -1,0 +1,99 @@
+# Agent Guide
+
+This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrapper, and a SvelteKit demo app. This guide summarizes structure, workflows, commands, and conventions so an agent (or dev) can act quickly and safely.
+
+## Repository Structure
+
+- `packages/wasm/` — Rust crate compiled to WebAssembly via `wasm-pack`.
+  - `src/lib.rs` — engine: draggable nodes physics + image store + resize APIs.
+  - `pkg/` — wasm-pack build output (js, wasm, d.ts).
+- `packages/corlena/` — TypeScript package `@corlena/core`.
+  - `wasm/` — runtime loader/wrapper for wasm-pack bundle; typed exports.
+  - `src/` — core utilities (used by apps).
+- `apps/my-app/` — SvelteKit demo.
+  - `src/lib/index.ts` — demo engines (DOM and Canvas). Canvas exposes `onDraw` hook.
+  - `src/routes/canvas/+page.svelte` — image overlay UI and interactions.
+  - `static/wasm/` — browser-served wasm bundle copied from `packages/wasm/pkg/`.
+- `docs/adr/` — Architectural Decision Records.
+
+## Key Concepts
+
+- Drag physics and image overlay are independent concerns.
+- WASM boundary is minimal and typed. JS fallback paths keep the demo usable when WASM is absent.
+- Canvas demo exposes `onDraw(ctx)` so pages can draw overlays per frame without forking the loop.
+
+## Important APIs
+
+From `@corlena/core/wasm` (see `packages/corlena/wasm/index.js` and `index.d.ts`):
+
+- `init(capacity?: number): Promise<void>`
+- `reset(): void`
+- `setView(scale: number): void`
+- `setConstraints(params: Float32Array): void`
+- `upsertNodes(nodes: Float32Array): void`
+- `applyPointers(pointers: Float32Array): void`
+- `processFrame({ dt: number }): { transforms: Float32Array; events: Int32Array }`
+- `isReady(): boolean`
+- `storeImage(id: number, rgba: Uint8Array, w: number, h: number): boolean`
+- `resizeImage(id: number, outW: number, outH: number): Uint8Array`
+
+See ADR-0002 for overlay details; ADR-0003 proposes transforms and bilinear resize.
+
+## Common Workflows
+
+### 1) Run the demo app
+
+- Dev server (workspace name: `my-app`):
+  - `npm run -w my-app dev`
+  - open `/canvas` route.
+
+### 2) Build the WASM engine
+
+- `npm run -w @corlena/wasm build`
+- Outputs to `packages/wasm/pkg/`.
+
+### 3) Update browser-served WASM bundle
+
+Copy new artifacts into `apps/my-app/static/wasm/` so the runtime loader finds `/wasm/corlena_wasm.js`:
+
+- `cp packages/wasm/pkg/corlena_wasm.js apps/my-app/static/wasm/corlena_wasm.js`
+- `cp packages/wasm/pkg/corlena_wasm_bg.wasm apps/my-app/static/wasm/corlena_wasm_bg.wasm`
+
+Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
+
+### 4) Canvas overlay testing
+
+- Upload image → stored via `storeImage`.
+- Adjust scale slider → resizes via `resizeImage` (WASM) or JS fallback.
+- Toggle touch-action (`none`, `pan-x`, `pan-y`, `auto`) to test mobile behavior.
+
+## Coding Notes
+
+- TypeScript: keep types accurate at the wasm boundary; prefer `Uint8Array` for byte buffers and construct `ImageData` via a `Uint8ClampedArray` copy.
+- Svelte: keep per-frame draw work light; use offscreen canvases when transferring raw pixels.
+- Rust: avoid panics across the boundary; validate inputs; return empty buffers or `false` on error.
+
+## ADR Process
+
+- Add new ADRs under `docs/adr/` with an incremented number, date, status, context, decision, implementation, consequences, and testing.
+- Example: `0002-image-overlay-resize-wasm.md`, `0003-overlay-transforms-bilinear.md`.
+
+## Safety & Ops
+
+- Build commands are non-destructive. Copying wasm artifacts overwrites files in `apps/my-app/static/wasm/`—double-check paths before running.
+- Avoid committing large binaries beyond the wasm bundle.
+- Prefer small, focused PRs tied to ADRs. Include reproduction steps and before/after notes.
+
+## Troubleshooting
+
+- WASM not loading? Ensure files exist in `apps/my-app/static/wasm/` and hard refresh the browser.
+- Type errors on `ImageData`: construct via `new Uint8ClampedArray(width * height * 4)` and `.set(u8)`.
+- Drag “jump” regressions: see ADR-0001 and verify grab-offset logic in both WASM and JS fallback.
+
+## Quick Links
+
+- Engine: `packages/wasm/src/lib.rs`
+- WASM wrapper: `packages/corlena/wasm/index.js` + `index.d.ts`
+- Canvas engine: `apps/my-app/src/lib/index.ts`
+- Canvas route: `apps/my-app/src/routes/canvas/+page.svelte`
+- ADRs: `docs/adr/`

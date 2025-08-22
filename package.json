@@ -1,0 +1,12 @@
+{
+  "name": "corlena-monorepo",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": ["packages/*", "apps/*"],
+  "packageManager": "npm@10",
+  "scripts": {
+    "dev": "npm run -w demo dev",
+    "build": "npm run -w @corlena/core build && npm run -w demo build",
+    "wasm:build": "npm run -w @corlena/wasm build"
+  }
+}

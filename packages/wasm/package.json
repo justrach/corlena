@@ -1,0 +1,9 @@
+{
+  "name": "@corlena/wasm",
+  "version": "0.0.1",
+  "type": "module",
+  "files": ["pkg"],
+  "scripts": {
+    "build": "wasm-pack build --target web --release -d ./pkg"
+  }
+}
