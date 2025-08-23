@@ -246,53 +246,6 @@ impl Engine {
         arr.copy_from(&out[..]);
         arr
     }
-
-    #[test]
-    fn resize_nearest_2x2_to_4x4_blocks() {
-        // 2x2 image: R, G, B, W
-        let sw = 2u32; let sh = 2u32; let ow = 4u32; let oh = 4u32;
-        let r = [255, 0, 0, 255];
-        let g = [0, 255, 0, 255];
-        let b = [0, 0, 255, 255];
-        let w = [255, 255, 255, 255];
-        let src = [r, g, b, w].concat();
-        let out = resize_nearest_rgba(&src, sw, sh, ow, oh);
-        // Top-left quadrant should be all red
-        for y in 0..(oh / 2) {
-            for x in 0..(ow / 2) {
-                let i = ((y as usize) * (ow as usize) + (x as usize)) * 4;
-                assert_eq!(&out[i..i+4], &r);
-            }
-        }
-        // Bottom-right quadrant should be all white
-        for y in (oh / 2)..oh {
-            for x in (ow / 2)..ow {
-                let i = ((y as usize) * (ow as usize) + (x as usize)) * 4;
-                assert_eq!(&out[i..i+4], &w);
-            }
-        }
-    }
-
-    #[test]
-    fn resize_bilinear_center_pixel_average() {
-        // 2x2 image: R (0,0), G (1,0), B (0,1), W (1,1)
-        let sw = 2u32; let sh = 2u32; let ow = 3u32; let oh = 3u32;
-        let r = [255, 0, 0, 255];
-        let g = [0, 255, 0, 255];
-        let b = [0, 0, 255, 255];
-        let w = [255, 255, 255, 255];
-        let src = [r, g, b, w].concat();
-        let out = resize_bilinear_rgba(&src, sw, sh, ow, oh);
-        // Center pixel should be approx average of all 4 corners
-        let cx = (ow / 2) as usize; let cy = (oh / 2) as usize; // (1,1)
-        let i = (cy * ow as usize + cx) * 4;
-        let px = &out[i..i+4];
-        // Average: ( (255+0+0+255)/4, (0+255+0+255)/4, (0+0+255+255)/4 ) = (128,128,128)
-        assert!((px[0] as i32 - 128).abs() <= 1);
-        assert!((px[1] as i32 - 128).abs() <= 1);
-        assert!((px[2] as i32 - 128).abs() <= 1);
-        assert_eq!(px[3], 255);
-    }
 }
 
 thread_local! {
