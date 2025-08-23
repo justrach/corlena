@@ -7,6 +7,12 @@ export function set_constraints(params: Float32Array): void;
 export function upsert_nodes(nodes: Float32Array): void;
 export function apply_pointers(pointers: Float32Array): void;
 export function process_frame(dt: number): any;
+export function spawn_particles(data: Float32Array): number;
+export function clear_particles(): void;
+export function set_particle_params(params: Float32Array): void;
+export function store_image(id: number, rgba: Uint8Array, w: number, h: number): boolean;
+export function resize_image(id: number, out_w: number, out_h: number): Uint8Array;
+export function resize_image_mode(id: number, out_w: number, out_h: number, mode: number): Uint8Array;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -17,6 +23,12 @@ export interface InitOutput {
   readonly upsert_nodes: (a: any) => void;
   readonly apply_pointers: (a: any) => void;
   readonly process_frame: (a: number) => any;
+  readonly spawn_particles: (a: any) => number;
+  readonly set_particle_params: (a: any) => void;
+  readonly store_image: (a: number, b: any, c: number, d: number) => number;
+  readonly resize_image: (a: number, b: number, c: number) => any;
+  readonly resize_image_mode: (a: number, b: number, c: number, d: number) => any;
+  readonly clear_particles: () => void;
   readonly reset: () => void;
   readonly set_view: (a: number) => void;
   readonly __wbindgen_exn_store: (a: number) => void;

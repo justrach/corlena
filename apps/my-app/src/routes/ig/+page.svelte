@@ -1,5 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import {
+    init as wasmInit,
+    isReady as wasmIsReady,
+    setConstraints as wasmSetConstraints,
+    setParticleParams as wasmSetParticleParams,
+    processFrame as wasmProcessFrame,
+    spawnParticles as wasmSpawnParticles
+  } from '@corlena/core/wasm';
 
   // Image layer model
   type ImgLayer = { id: number; img: HTMLImageElement; x: number; y: number; w: number; h: number };
@@ -20,9 +28,14 @@
   let ctx: CanvasRenderingContext2D | null = null;
   let raf = 0;
   let nextId = 1;
+  let lastTime = 0;
+  let wasmReady = false;
+  let particleBuf: Float32Array = new Float32Array(0);
 
   let imgs: ImgLayer[] = [];
   let texts: TextNode[] = [];
+  // Feature: Wire particles toggle (off by default)
+  let particlesEnabled = false;
 
   // UI state
   let editingId: number | null = null;
@@ -53,7 +66,12 @@
   let inputEl: HTMLInputElement | null = null;
   let frameEl: HTMLDivElement | null = null;
   let hudEl: HTMLDivElement | null = null;
-  let hudPressing = false;
+  let hudInteracting = false;
+  // iOS scroll lock state
+  let interacting = false;
+  // Drag-and-drop state
+  let dropActive = false;
+  let dragDepth = 0; // track nested dragenter/leaves to avoid flicker
 
   // Canvas size handled by CSS aspect-ratio, but pixels by DPR
   function resize() {
@@ -66,6 +84,10 @@
     ctx?.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
     if (editingId != null) positionInputOverNode();
     positionHud();
+    if (wasmReady) {
+      // [left, top, right, bottom, gridX, gridY, inertia, damping]
+      wasmSetConstraints(new Float32Array([0, 0, wCss, hCss, 1, 1, 0, 0.999]));
+    }
   }
 
   // Helpers for selected text node (editing takes precedence, else last interacted, else last in list)
@@ -85,7 +107,7 @@
     positionHud();
   }
   function adjustFont(delta: number) {
-    updateSelectedText(t => ({ ...t, fontSize: Math.max(8, Math.min(220, Math.round(t.fontSize + delta))) }));
+    updateSelectedText(t => ({ ...t, fontSize: Math.max(0.1, t.fontSize + delta) }));
   }
   function setColor(color: string) {
     updateSelectedText(t => ({ ...t, color }));
@@ -103,7 +125,23 @@
       ctx.drawImage(L.img, L.x, L.y, L.w, L.h);
     }
 
-    // Draw texts
+    // Draw particles (only if enabled)
+    if (particlesEnabled && particleBuf && particleBuf.length >= 6) {
+      const stride = 6;
+      ctx.save();
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < particleBuf.length; i += stride) {
+        const x = particleBuf[i + 0];
+        const y = particleBuf[i + 1];
+        const r = Math.max(0.5, particleBuf[i + 4]);
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw texts (including editing node; DOM input text is transparent to avoid duplicate)
     for (const T of texts) {
       ctx.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
       ctx.textAlign = T.align;
@@ -112,15 +150,12 @@
       const x = T.x;
       const y = T.y;
       const displayText = (T.id === editingId ? editingValue : T.text);
-      // Draw text only if not currently editing this node
-      if (T.id !== editingId) {
-        // shadow for readability
-        ctx.shadowColor = 'rgba(0,0,0,0.4)';
-        ctx.shadowBlur = 4;
-        ctx.lineWidth = 2;
-        ctx.fillText(displayText, x, y);
-        ctx.shadowBlur = 0;
-      }
+      // shadow for readability
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur = 4;
+      ctx.lineWidth = 2;
+      ctx.fillText(displayText, x, y);
+      ctx.shadowBlur = 0;
 
       // selection bbox (if editing or dragging)
       if (T.id === editingId || T.id === draggingId) {
@@ -140,6 +175,16 @@
   }
 
   function loop() {
+    const now = performance.now();
+    const dt = lastTime ? Math.min(0.032, (now - lastTime) / 1000) : 0;
+    lastTime = now;
+    if (wasmReady && particlesEnabled) {
+      const out = wasmProcessFrame({ dt });
+      particleBuf = out.particles;
+    } else {
+      // Clear buffer when disabled
+      particleBuf = new Float32Array(0);
+    }
     compose();
     raf = requestAnimationFrame(loop);
   }
@@ -150,6 +195,11 @@
     const onResize = () => resize();
     resize();
     window.addEventListener('resize', onResize);
+    // Prevent browser from navigating away when dropping files outside the frame
+    const onWinDragOver = (e: DragEvent) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; };
+    const onWinDrop = (e: DragEvent) => { e.preventDefault(); };
+    window.addEventListener('dragover', onWinDragOver);
+    window.addEventListener('drop', onWinDrop);
     const onDocPointerDown = (e: PointerEvent) => {
       if (editingId == null) return;
       // If click is outside the input element, commit and hide
@@ -159,11 +209,51 @@
       stopEdit(true);
     };
     window.addEventListener('pointerdown', onDocPointerDown, true);
+    // Init WASM physics after mount
+    (async () => {
+      try {
+        await wasmInit(512);
+        wasmReady = wasmIsReady();
+        if (wasmReady) {
+          const wCss = canvas?.clientWidth || 360;
+          const hCss = canvas?.clientHeight || 640;
+          wasmSetConstraints(new Float32Array([0, 0, wCss, hCss, 1, 1, 0, 0.999]));
+          // gravityX, gravityY, damping, restitution
+          wasmSetParticleParams(new Float32Array([0, 900, 0.995, 0.6]));
+        }
+      } catch {}
+    })();
+    // iOS overscroll/rubber-band prevention while interacting within the frame
+    const preventScroll = (e: TouchEvent) => {
+      if (!interacting) return;
+      const path = (e.composedPath && e.composedPath()) || [];
+      if (frameEl && (path as EventTarget[]).includes(frameEl)) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    // Safari gesture zoom prevention near edges while interacting
+    const onGesture = (e: any) => { if (interacting) { try { e.preventDefault(); } catch {} } };
+    document.addEventListener('gesturestart', onGesture as any);
+    document.addEventListener('gesturechange', onGesture as any);
+    document.addEventListener('gestureend', onGesture as any);
+    // Reset HUD interacting flag when page focus/visibility changes (e.g., native color picker opens)
+    const resetHudInteract = () => { hudInteracting = false; };
+    window.addEventListener('focus', resetHudInteract);
+    document.addEventListener('visibilitychange', resetHudInteract);
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('dragover', onWinDragOver);
+      window.removeEventListener('drop', onWinDrop);
       window.removeEventListener('pointerdown', onDocPointerDown, true);
+      document.removeEventListener('touchmove', preventScroll as any);
+      document.removeEventListener('gesturestart', onGesture as any);
+      document.removeEventListener('gesturechange', onGesture as any);
+      document.removeEventListener('gestureend', onGesture as any);
+      window.removeEventListener('focus', resetHudInteract);
+      document.removeEventListener('visibilitychange', resetHudInteract);
     };
   });
 
@@ -171,7 +261,14 @@
   async function onUpload(e: Event) {
     const input = e.target as HTMLInputElement;
     const files = input.files ? Array.from(input.files) : [];
+    await addImagesFromFiles(files);
+    // reset
+    (e.target as HTMLInputElement).value = '';
+  }
+
+  async function addImagesFromFiles(files: File[]) {
     for (const file of files) {
+      if (!file || !file.type?.startsWith('image/')) continue;
       const url = URL.createObjectURL(file);
       const img = new Image();
       await new Promise<void>((resolve, reject) => {
@@ -179,18 +276,39 @@
         img.onerror = () => reject(new Error('Image load failed'));
         img.src = url;
       });
-      // Fit image to width inside frame, keep aspect
+      // Fit image to frame while preserving aspect
       const frameW = canvas?.clientWidth || 360;
       const frameH = canvas?.clientHeight || 640;
       const scale = Math.min(frameW / img.naturalWidth, frameH / img.naturalHeight);
-      const w = Math.round(img.naturalWidth * scale);
-      const h = Math.round(img.naturalHeight * scale);
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
       const x = Math.round((frameW - w) / 2);
       const y = Math.round((frameH - h) / 2);
       imgs = [...imgs, { id: nextId++, img, x, y, w, h }];
     }
-    // reset
-    (e.target as HTMLInputElement).value = '';
+  }
+
+  function onDragEnter(e: DragEvent) {
+    e.preventDefault();
+    dragDepth++;
+    dropActive = true;
+  }
+  function onDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDragLeave(e: DragEvent) {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dropActive = false;
+  }
+  async function onDrop(e: DragEvent) {
+    e.preventDefault();
+    dragDepth = 0;
+    dropActive = false;
+    const dt = e.dataTransfer;
+    const files = dt?.files ? Array.from(dt.files) : [];
+    if (files.length) await addImagesFromFiles(files);
   }
 
   function addText() {
@@ -257,7 +375,10 @@
     inputEl.style.width = `${Math.round(width + 16)}px`;
     inputEl.style.height = `${Math.round(height + 16)}px`;
     inputEl.style.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
-    inputEl.style.color = T.color;
+    // Make input text transparent to avoid duplicate; caret shows with selected color
+    inputEl.style.setProperty('color', 'transparent', 'important');
+    inputEl.style.setProperty('-webkit-text-fill-color', 'transparent', 'important');
+    inputEl.style.setProperty('caret-color', T.color, 'important');
     if (inputEl.value !== editingValue) inputEl.value = editingValue;
     if (justOpened) {
       inputEl.focus();
@@ -269,7 +390,8 @@
   function positionHud() {
     if (!hudEl || !canvas) return;
     const sel = getSelectedText();
-    if (!sel || !ctx) { hudEl.style.display = 'none'; return; }
+    // Only show HUD while editing a text node
+    if (editingId == null || !sel || !ctx) { hudEl.style.display = 'none'; return; }
     // Measure selected text bbox
     ctx.font = `${sel.fontWeight} ${sel.fontSize}px ${sel.fontFamily}`;
     ctx.textAlign = sel.align;
@@ -304,6 +426,7 @@
 
     // Track pointer for potential pinch
     pointers.set(e.pointerId, { x, y });
+    interacting = true;
 
     // If two pointers active, start pinch
     if (pointers.size === 2) {
@@ -353,6 +476,28 @@
               relY: (cy - L.y) / Math.max(1, L.h)
             };
             break;
+          }
+        }
+      }
+      // Fallback: if no hit, use currently dragging or editing text
+      if (!pinchTargetType) {
+        if (draggingType === 'text' && draggingId != null) {
+          const t = texts.find(n => n.id === draggingId);
+          if (t) {
+            pinchTargetType = 'text';
+            pinchTargetId = t.id;
+            pinchStartFontSize = t.fontSize;
+            pinchStartTextX = t.x;
+            pinchStartTextY = t.y;
+          }
+        } else if (editingId != null) {
+          const t = texts.find(n => n.id === editingId);
+          if (t) {
+            pinchTargetType = 'text';
+            pinchTargetId = t.id;
+            pinchStartFontSize = t.fontSize;
+            pinchStartTextX = t.x;
+            pinchStartTextY = t.y;
           }
         }
       }
@@ -424,7 +569,7 @@
       if (pinchTargetType === 'text') {
         texts = texts.map(t => {
           if (t.id !== pinchTargetId) return t;
-          const newSize = Math.max(8, Math.min(200, Math.round(pinchStartFontSize * scale)));
+          const newSize = Math.max(0.1, pinchStartFontSize * scale);
           // Keep center anchored to current pinch center by moving x/y if alignment is center
           let nx = t.x;
           if (t.align === 'center') nx = cx; // simple: center-aligned text anchors at center
@@ -478,6 +623,28 @@
     draggingId = null; draggingType = null; moved = 0;
     try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch {}
     positionHud();
+    interacting = pointers.size > 0;
+    // Spawn particle burst at release point (only if enabled)
+    if (particlesEnabled && wasmReady && rect) {
+      const N = 24;
+      const data = new Float32Array(N * 6);
+      for (let i = 0; i < N; i++) {
+        const ang = (i / N) * Math.PI * 2;
+        const speed = 250 + Math.random() * 250;
+        const vx = Math.cos(ang) * speed + (Math.random() - 0.5) * 60;
+        const vy = Math.sin(ang) * speed + (Math.random() - 0.5) * 60;
+        const r = 2 + Math.random() * 2.5;
+        const life = 1.2 + Math.random() * 0.6;
+        const base = i * 6;
+        data[base + 0] = px;
+        data[base + 1] = py;
+        data[base + 2] = vx;
+        data[base + 3] = vy;
+        data[base + 4] = r;
+        data[base + 5] = life;
+      }
+      wasmSpawnParticles(data);
+    }
   }
 
   function onPointerCancel(e: PointerEvent) {
@@ -487,6 +654,7 @@
     }
     draggingId = null; draggingType = null; moved = 0;
     try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch {}
+    interacting = pointers.size > 0;
   }
 
   function onWheel(e: WheelEvent) {
@@ -502,6 +670,16 @@
 
     // Prefer text hit under cursor
     let handled = false;
+    // New: if dragging a text, scale it regardless of hit test
+    if (!handled && draggingType === 'text' && draggingId != null) {
+      texts = texts.map(t => t.id === draggingId ? { ...t, fontSize: Math.max(0.1, t.fontSize * scale), x: Math.round(x), y: Math.round(y) } : t);
+      handled = true;
+    }
+    // New: if editing a text, scale it regardless of hit test
+    if (!handled && editingId != null) {
+      texts = texts.map(t => t.id === editingId ? { ...t, fontSize: Math.max(0.1, t.fontSize * scale), x: Math.round(x), y: Math.round(y) } : t);
+      handled = true;
+    }
     for (let i = texts.length - 1; i >= 0; i--) {
       const T = texts[i];
       ctx.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
@@ -516,7 +694,7 @@
       else if (T.align === 'right' || T.align === 'end') left = T.x - width;
       const top = T.y - ascent;
       if (x >= left - 8 && x <= left + width + 8 && y >= top - 8 && y <= top + height + 8) {
-        const newSize = Math.max(8, Math.min(220, Math.round(T.fontSize * scale)));
+        const newSize = Math.max(0.1, T.fontSize * scale);
         texts = texts.map(t => t.id === T.id ? { ...t, fontSize: newSize, x: Math.round(x), y: Math.round(y) } : t);
         handled = true;
         break;
@@ -565,11 +743,15 @@
 <style>
   .wrap { display: grid; gap: 12px; }
   .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .frame { width: min(420px, 100%); aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a2a; background: #000; position: relative; }
+  .frame { width: min(420px, 100%); aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a2a; background: #000; position: relative; overscroll-behavior: contain; overscroll-behavior-y: contain; }
   canvas { width: 100%; height: 100%; display: block; touch-action: none; background: #000; }
-  .edit-input { position: fixed; z-index: 10; display: none; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); background: rgba(0,0,0,0.6); color: #fff; outline: none; }
+  .edit-input { position: fixed; z-index: 10; display: none; padding: 8px; border-radius: 8px; border: 0; background: transparent !important; color: transparent; outline: none; -webkit-text-fill-color: transparent; caret-color: currentColor; }
   .hud { position: fixed; z-index: 11; display: none; gap: 6px; align-items: center; padding: 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: rgba(24,24,24,0.8); backdrop-filter: blur(6px); }
+  .hud input[type="color"] { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); background: transparent; }
   .note { color: #888; font-size: 12px; }
+  /* Drop zone styles */
+  .frame.dropping { outline: 2px dashed rgba(255,255,255,0.6); outline-offset: -6px; }
+  .drop-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255,255,255,0.06); color: #fff; font-weight: 600; letter-spacing: 0.3px; pointer-events: none; z-index: 5; }
 </style>
 
 <div class="wrap">
@@ -581,11 +763,24 @@
     <div style="display:flex;gap:6px;align-items:center">
       <button on:click={() => adjustFont(-2)} title="Smaller">A-</button>
       <button on:click={() => adjustFont(+2)} title="Larger">A+</button>
-      <input type="color" on:input={(e) => setColor((e.target as HTMLInputElement).value)} title="Text color" />
+      <input type="color" on:input={(e) => setColor((e.target as HTMLInputElement).value)} on:change={(e) => setColor((e.target as HTMLInputElement).value)} title="Text color" />
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+      <label style="display:flex;gap:6px;align-items:center">
+        <input type="checkbox" bind:checked={particlesEnabled} />
+        <span>Wire particles</span>
+      </label>
     </div>
     <span class="note">9:16 canvas. Drag text to position. Click text to edit.</span>
   </div>
-  <div class="frame" bind:this={frameEl}>
+  <div class="frame" bind:this={frameEl}
+       class:dropping={dropActive}
+       on:dragenter={onDragEnter}
+       on:dragover={onDragOver}
+       on:dragleave={onDragLeave}
+       on:drop={onDrop}
+       role="region"
+       aria-label="Canvas drop zone: drop images to add">
     <canvas
       bind:this={canvas}
       on:pointerdown={onPointerDown}
@@ -595,22 +790,31 @@
       on:pointerleave={onPointerCancel}
       on:wheel={onWheel}
     ></canvas>
+    {#if dropActive}
+      <div class="drop-overlay">Drop images to add</div>
+    {/if}
   </div>
   <nav><a href="/">Home</a> • <a href="/igcanvas">Black Canvas</a> • <a href="/canvas">Squares</a> • <a href="/wasm">WASM</a></nav>
 </div>
 
 <input class="edit-input" bind:this={inputEl}
-  on:blur={() => { if (hudPressing) { queueMicrotask(() => inputEl?.focus()); return; } stopEdit(true); }}
+  on:blur={() => { if (hudInteracting) { queueMicrotask(() => inputEl?.focus()); return; } stopEdit(true); }}
   on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); stopEdit(true); } if (e.key === 'Escape') { e.preventDefault(); stopEdit(false); } }}
   on:input={(e) => { editingValue = (e.target as HTMLInputElement).value; positionInputOverNode(); positionHud(); }}
 />
 
 <div class="hud" bind:this={hudEl} role="toolbar" aria-label="Text controls"
-  on:pointerdown={(e) => { hudPressing = true; e.preventDefault(); }}
-  on:pointerup={() => { hudPressing = false; }}
-  on:pointercancel={() => { hudPressing = false; }}
-  on:pointerleave={() => { hudPressing = false; }}>
+  on:pointerdown={() => { hudInteracting = true; }}
+  on:pointerup={() => { hudInteracting = false; }}
+  on:pointercancel={() => { hudInteracting = false; }}
+  on:pointerleave={() => { hudInteracting = false; }}>
   <button on:click={() => adjustFont(-2)} title="Smaller">A-</button>
   <button on:click={() => adjustFont(+2)} title="Larger">A+</button>
-  <input type="color" on:input={(e) => setColor((e.target as HTMLInputElement).value)} title="Text color" />
+  <input type="color"
+    on:touchstart={() => { hudInteracting = true; }}
+    on:mousedown={() => { hudInteracting = true; }}
+    on:click={() => { hudInteracting = true; }}
+    on:input={(e) => { setColor((e.target as HTMLInputElement).value); queueMicrotask(() => { hudInteracting = false; }); }}
+    on:blur={() => { hudInteracting = false; }}
+    title="Text color" />
 </div>

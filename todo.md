@@ -7,14 +7,15 @@
 - [x] Demo app with configurable canvas size presets
 - [x] Rust/WASM crate stub with `process_frame` boundary
 - [x] Resizable action (edges/corners, min/max) — demo updated (text/image/video)
-- [ ] Droppable zones (enter/leave/over/drop)
-- [ ] iOS scroll lock polish (overscroll/rubber-banding)
+- [x] Droppable zones (enter/leave/over/drop)
+- [x] iOS scroll lock polish (overscroll/rubber-banding)
 - [ ] Inertia in JS (throw/decay)
 - [ ] WASM: real snap/collision/inertia impl
 - [ ] Autoscroll near edges
 - [ ] Keyboard a11y + ARIA updates
 - [ ] Docs site + Svelte REPL links
 - [x] Unit tests: pinch/resample anchoring invariants (applyPinch, anchorResample)
+- [x] Wire particles toggle on `/ig` and disable default on-tap bursts
 
 ## Text Overlay & Export (MVP)
 - [ ] Add text overlay model and rendering in `/canvas`
@@ -23,7 +24,7 @@
 - [ ] Styling: font family, size, weight, color, align, optional shadow/bg pill
 - [ ] Hit-testing and selection bounding box
 - [ ] Z-order above image overlay (simple add-on-top flow)
-- [ ] Export canvas to Blob (PNG/JPEG) with DPR handling
+- [x] Export canvas to Blob (PNG/JPEG) with DPR handling
 - [ ] Download/share UX
 - [ ] Font loading and metrics stability
 - [ ] Unit tests: text bounds under transform; export DPR parity
@@ -76,6 +77,8 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 
 ### Testing + Demo
 - [ ] Unit tests for memory layout and `process_frame` math
+- [x] Rust unit tests: particle engine step (gravity, bounce, damping, lifetime)
+- [x] JS tests: WASM wrapper fallback behavior and APIs
 - [ ] Demo toggles: WASM on/off, node count slider, zoom/pan
 - [ ] Visual correctness checks (snap/bounds/inertia)
 

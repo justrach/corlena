@@ -32,6 +32,16 @@ struct Image {
     data: Vec<u8>, // RGBA
 }
 
+#[derive(Clone, Debug)]
+struct Particle {
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    r: f32,
+    life: f32,
+}
+
 #[derive(Default)]
 struct Engine {
     nodes: Vec<Node>,
@@ -48,6 +58,12 @@ struct Engine {
     damping: f32,
     // image store (RGBA)
     images: HashMap<i32, Image>,
+    // particles
+    particles: Vec<Particle>,
+    g_x: f32,
+    g_y: f32,
+    p_damping: f32,
+    restitution: f32,
 }
 
 impl Engine {
@@ -64,6 +80,11 @@ impl Engine {
         e.inertia = 0.0;
         e.damping = 1.0;
         e.images = HashMap::new();
+        e.particles = Vec::new();
+        e.g_x = 0.0; // gravity x
+        e.g_y = 600.0; // gravity y (px/s^2)
+        e.p_damping = 0.999; // per frame exp factor (applied with powf(dt))
+        e.restitution = 0.6; // bounce factor
         e
     }
 
@@ -76,6 +97,7 @@ impl Engine {
         self.grid_x = 1.0; self.grid_y = 1.0;
         self.inertia = 0.0; self.damping = 1.0;
         self.images.clear();
+        self.particles.clear();
     }
 
     fn upsert_nodes(&mut self, data: &[f32]) {
@@ -160,6 +182,34 @@ impl Engine {
             n.x = n.x.max(self.left).min(self.left + max_x);
             n.y = n.y.max(self.top).min(self.top + max_y);
         }
+
+        // Particles integration
+        if !self.particles.is_empty() {
+            let g_x = self.g_x;
+            let g_y = self.g_y;
+            let p_damp = if self.p_damping < 1.0 { self.p_damping.powf(dt.max(0.0)) } else { 1.0 };
+            let left = self.left; let top = self.top; let right = self.right; let bottom = self.bottom;
+            let has_bounds = right.is_finite() && bottom.is_finite();
+            for p in &mut self.particles {
+                // integrate
+                p.vx += g_x * dt;
+                p.vy += g_y * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                if self.p_damping < 1.0 { p.vx *= p_damp; p.vy *= p_damp; }
+                // bounds collision (simple circle vs rect)
+                if has_bounds {
+                    if p.x - p.r < left { p.x = left + p.r; p.vx = -p.vx * self.restitution; }
+                    if p.x + p.r > right { p.x = right - p.r; p.vx = -p.vx * self.restitution; }
+                    if p.y - p.r < top { p.y = top + p.r; p.vy = -p.vy * self.restitution; }
+                    if p.y + p.r > bottom { p.y = bottom - p.r; p.vy = -p.vy * self.restitution; }
+                }
+                // lifetime decay
+                p.life -= dt;
+            }
+            // remove dead
+            self.particles.retain(|p| p.life > 0.0);
+        }
     }
 
     fn write_transforms(&self) -> Float32Array {
@@ -174,6 +224,23 @@ impl Engine {
             out.push(self.scale.max(0.0001)); // scaleX
             out.push(self.scale.max(0.0001)); // scaleY
             out.push(0.0); // reserved
+        }
+        let arr = Float32Array::new_with_length(out.len() as u32);
+        arr.copy_from(&out[..]);
+        arr
+    }
+
+    fn write_particles(&self) -> Float32Array {
+        // [x, y, vx, vy, r, life] * N
+        let stride = 6usize;
+        let mut out: Vec<f32> = Vec::with_capacity(self.particles.len() * stride);
+        for p in &self.particles {
+            out.push(p.x);
+            out.push(p.y);
+            out.push(p.vx);
+            out.push(p.vy);
+            out.push(p.r);
+            out.push(p.life);
         }
         let arr = Float32Array::new_with_length(out.len() as u32);
         arr.copy_from(&out[..]);
@@ -251,20 +318,67 @@ pub fn apply_pointers(pointers: Float32Array) {
 
 #[wasm_bindgen]
 pub fn process_frame(dt: f32) -> JsValue {
-    let (transforms, events) = ENGINE.with(|e| {
+    let (transforms, particles, events) = ENGINE.with(|e| {
         let mut transforms = Float32Array::new_with_length(0);
+        let mut particles = Float32Array::new_with_length(0);
         if let Some(ref mut eng) = *e.borrow_mut() {
             eng.step(dt);
             transforms = eng.write_transforms();
+            particles = eng.write_particles();
         }
         let events = Int32Array::new_with_length(0); // event ring buffer stub
-        (transforms, events)
+        (transforms, particles, events)
     });
 
     let obj = Object::new();
     Reflect::set(&obj, &JsValue::from_str("transforms"), &transforms).ok();
+    Reflect::set(&obj, &JsValue::from_str("particles"), &particles).ok();
     Reflect::set(&obj, &JsValue::from_str("events"), &events).ok();
     JsValue::from(obj)
+}
+
+#[wasm_bindgen]
+pub fn spawn_particles(data: Float32Array) -> u32 {
+    // data stride 6: [x, y, vx, vy, r, life]
+    let mut count = 0u32;
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            let len = data.length() as usize;
+            if len == 0 { return; }
+            let mut buf = vec![0f32; len];
+            data.copy_to(&mut buf);
+            let stride = 6usize;
+            for chunk in buf.chunks(stride) {
+                if chunk.len() < stride { break; }
+                let p = Particle { x: chunk[0], y: chunk[1], vx: chunk[2], vy: chunk[3], r: chunk[4].max(0.1), life: chunk[5].max(0.0) };
+                if p.life > 0.0 { eng.particles.push(p); count += 1; }
+            }
+        }
+    });
+    count
+}
+
+#[wasm_bindgen]
+pub fn clear_particles() {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() { eng.particles.clear(); }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_particle_params(params: Float32Array) {
+    // [g_x, g_y, damping(0..1), restitution(0..1)]
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            let mut buf = [0f32; 4];
+            let len = params.length() as usize;
+            let copy_len = len.min(4);
+            for i in 0..copy_len { buf[i] = params.get_index(i as u32); }
+            if copy_len >= 2 { eng.g_x = buf[0]; eng.g_y = buf[1]; }
+            if copy_len >= 3 { eng.p_damping = buf[2].clamp(0.0, 1.0); }
+            if copy_len >= 4 { eng.restitution = buf[3].clamp(0.0, 1.0); }
+        }
+    });
 }
 
 #[wasm_bindgen]
@@ -307,6 +421,95 @@ pub fn resize_image(id: i32, out_w: u32, out_h: u32) -> Uint8Array {
         }
     });
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_engine_with_bounds(left: f32, top: f32, right: f32, bottom: f32) -> Engine {
+        let mut e = Engine::new(0);
+        e.left = left;
+        e.top = top;
+        e.right = right;
+        e.bottom = bottom;
+        e
+    }
+
+    #[test]
+    fn particles_gravity_integration() {
+        let mut e = make_engine_with_bounds(0.0, 0.0, 100.0, 100.0);
+        e.g_x = 0.0;
+        e.g_y = 1000.0;
+        e.p_damping = 1.0; // no damping effect
+        e.restitution = 0.0;
+        e.particles.push(Particle { x: 50.0, y: 10.0, vx: 0.0, vy: 0.0, r: 2.0, life: 1.0 });
+        e.step(0.016);
+        assert!(e.particles[0].vy > 0.0, "gravity should increase vy");
+        assert!(e.particles[0].y > 10.0, "y should increase under gravity");
+    }
+
+    #[test]
+    fn particles_bounce_bottom() {
+        let mut e = make_engine_with_bounds(0.0, 0.0, 100.0, 100.0);
+        e.g_y = 0.0; // isolate bounce
+        e.restitution = 0.5;
+        e.particles.push(Particle { x: 50.0, y: 99.0, vx: 0.0, vy: 100.0, r: 2.0, life: 1.0 });
+        e.step(0.05);
+        let p = &e.particles[0];
+        assert!(p.y <= 100.0 - p.r + 1e-3, "should clamp to bottom");
+        assert!(p.vy <= 0.0, "should invert vy on bounce");
+    }
+
+    #[test]
+    fn particles_damping_applied() {
+        let mut e = make_engine_with_bounds(0.0, 0.0, f32::INFINITY, f32::INFINITY);
+        e.g_x = 0.0;
+        e.g_y = 0.0;
+        e.p_damping = 0.5; // strong damping
+        e.particles.push(Particle { x: 0.0, y: 0.0, vx: 10.0, vy: 0.0, r: 1.0, life: 10.0 });
+        e.step(1.0);
+        let v = e.particles[0].vx;
+        assert!(v.abs() < 10.0, "velocity should reduce with damping");
+    }
+
+    #[test]
+    fn particles_lifetime_removal() {
+        let mut e = make_engine_with_bounds(0.0, 0.0, 10.0, 10.0);
+        e.particles.push(Particle { x: 0.0, y: 0.0, vx: 0.0, vy: 0.0, r: 1.0, life: 0.01 });
+        e.step(0.02);
+        assert!(e.particles.is_empty(), "expired particles should be removed");
+    }
+
+    #[test]
+    #[ignore]
+    fn perf_smoke_fps_estimate() {
+        use std::time::Instant;
+        fn run_case(n: usize, steps: usize) -> f64 {
+            let mut e = make_engine_with_bounds(0.0, 0.0, 1920.0, 1080.0);
+            e.g_x = 0.0;
+            e.g_y = 500.0;
+            e.p_damping = 0.02;
+            e.restitution = 0.2;
+            for i in 0..n {
+                let x = (i % 800) as f32 as f32;
+                let y = (i / 800) as f32 as f32;
+                e.particles.push(Particle { x, y, vx: 10.0, vy: -5.0, r: 1.0, life: 10.0 });
+            }
+            let dt = 1.0 / 60.0;
+            let start = Instant::now();
+            for _ in 0..steps { e.step(dt); }
+            let dur = start.elapsed();
+            let avg_ms = (dur.as_secs_f64() * 1000.0) / steps as f64;
+            let fps = 1000.0 / avg_ms;
+            eprintln!("particles={}, avg_step_ms={:.3}, est_fps={:.1}", n, avg_ms, fps);
+            fps
+        }
+        // Keep quick to run even if someone un-ignores accidentally
+        let _ = run_case(100, 240);
+        let _ = run_case(1_000, 240);
+        let _ = run_case(5_000, 120);
+    }
 }
 
 #[wasm_bindgen]

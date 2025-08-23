@@ -9,10 +9,11 @@ This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrap
   - `pkg/` — wasm-pack build output (js, wasm, d.ts).
 - `packages/corlena/` — TypeScript package `@corlena/core`.
   - `wasm/` — runtime loader/wrapper for wasm-pack bundle; typed exports.
-  - `src/` — core utilities (used by apps).
+  - `src/` — small utilities and Svelte helpers used by demos (`stores/interaction.ts`, `actions/resizable.ts`).
 - `apps/my-app/` — SvelteKit demo.
   - `src/lib/index.ts` — demo engines (DOM and Canvas). Canvas exposes `onDraw` hook.
-  - `src/routes/canvas/+page.svelte` — image overlay UI and interactions.
+  - `src/routes/canvas/+page.svelte` — image overlay UI and interactions (baseline canvas demo).
+  - `src/routes/ig/+page.svelte` — Instagram-style composer: text overlays with inline editing, HUD, pinch/scroll scaling, export.
   - `static/wasm/` — browser-served wasm bundle copied from `packages/wasm/pkg/`.
 - `docs/adr/` — Architectural Decision Records.
 
@@ -39,13 +40,18 @@ From `@corlena/core/wasm` (see `packages/corlena/wasm/index.js` and `index.d.ts`
 
 See ADR-0002 for overlay details; ADR-0003 proposes transforms and bilinear resize.
 
+From `@corlena/core/src` helpers used in demos:
+
+- `stores/interaction.ts` — `createGestureStore()` Svelte store for simple gesture state.
+- `actions/resizable.ts` — DOM `resizable` action with handles, keyboard resize, min/max & aspect constraints, and optional scroll lock.
+
 ## Common Workflows
 
 ### 1) Run the demo app
 
 - Dev server (workspace name: `my-app`):
   - `npm run -w my-app dev`
-  - open `/canvas` route.
+  - open `/canvas` route (baseline) or `/ig` (IG Composer).
 
 ### 2) Build the WASM engine
 
@@ -66,6 +72,14 @@ Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
 - Upload image → stored via `storeImage`.
 - Adjust scale slider → resizes via `resizeImage` (WASM) or JS fallback.
 - Toggle touch-action (`none`, `pan-x`, `pan-y`, `auto`) to test mobile behavior.
+
+### 5) IG Composer testing
+
+- Route: `/ig` in the demo app.
+- Add text via the toolbar. Tap/click text to edit inline.
+- Pinch on touch or hold Ctrl/⌘ and use the mouse wheel anywhere to scale selected/dragging text (works even outside the text bbox).
+- HUD appears near selected text with A-/A+ and color controls. Interactions don’t blur/commit the editor.
+- Export: click Export to get a PNG Blob with DPR handling.
 
 ## Coding Notes
 
@@ -96,4 +110,21 @@ Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
 - WASM wrapper: `packages/corlena/wasm/index.js` + `index.d.ts`
 - Canvas engine: `apps/my-app/src/lib/index.ts`
 - Canvas route: `apps/my-app/src/routes/canvas/+page.svelte`
+- IG Composer: `apps/my-app/src/routes/ig/+page.svelte`
 - ADRs: `docs/adr/`
+
+---
+
+## IG Composer: Overview
+
+File: `apps/my-app/src/routes/ig/+page.svelte`
+
+- Purpose: Instagram-style 9:16 composer with text overlays and image background.
+- Editing: Floating DOM `<input>` is positioned over the canvas for inline text editing. The visible text is drawn on the canvas to avoid duplication. The input is fully transparent; caret color matches the text color.
+- HUD: Floating toolbar pinned near the selected text with A-/A+ and color. HUD interaction never commits/blur edits inadvertently.
+- Scaling: Pinch and Ctrl/⌘+wheel scale the selected/dragging text even when the gesture occurs outside the text bbox.
+- Accessibility: HUD controls expose ARIA roles/labels. Larger color input hit area for mobile.
+- iOS specifics: Use `-webkit-text-fill-color` and `caret-color`; manage `hudInteracting` to avoid premature blur during native color picker lifecycle.
+- Export: Canvas content to Blob with DPR handling.
+
+See ADR-0005 for UX notes.

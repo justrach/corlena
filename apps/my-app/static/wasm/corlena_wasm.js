@@ -81,6 +81,26 @@ export function process_frame(dt) {
 }
 
 /**
+ * @param {Float32Array} data
+ * @returns {number}
+ */
+export function spawn_particles(data) {
+    const ret = wasm.spawn_particles(data);
+    return ret >>> 0;
+}
+
+export function clear_particles() {
+    wasm.clear_particles();
+}
+
+/**
+ * @param {Float32Array} params
+ */
+export function set_particle_params(params) {
+    wasm.set_particle_params(params);
+}
+
+/**
  * @param {number} id
  * @param {Uint8Array} rgba
  * @param {number} w

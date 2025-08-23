@@ -64,10 +64,10 @@ export function processFrame(input) {
   // Preferred: new API using internal state (dt only)
   if (mod && typeof mod.process_frame === 'function') {
     const out = mod.process_frame(Number(input?.dt ?? 0));
-    return { transforms: out.transforms, events: out.events };
+    return { transforms: out.transforms, particles: out.particles || new Float32Array(0), events: out.events };
   }
   // Fallback noop
-  return { transforms: new Float32Array(0), events: new Int32Array(0) };
+  return { transforms: new Float32Array(0), particles: new Float32Array(0), events: new Int32Array(0) };
 }
 
 export function isReady() {
@@ -89,4 +89,25 @@ export function resizeImageMode(id, outW, outH, mode) {
   // Fallback to nearest if mode API is missing
   if (mod && typeof mod.resize_image === 'function') return mod.resize_image(id|0, outW>>>0, outH>>>0);
   return new Uint8Array(0);
+}
+
+// Particle APIs
+export function spawnParticles(arr) {
+  if (mod && typeof mod.spawn_particles === 'function') {
+    // Accept number[] or Float32Array
+    const data = arr instanceof Float32Array ? arr : new Float32Array(arr || []);
+    return mod.spawn_particles(data) >>> 0;
+  }
+  return 0;
+}
+
+export function clearParticles() {
+  if (mod && typeof mod.clear_particles === 'function') mod.clear_particles();
+}
+
+export function setParticleParams(params) {
+  if (mod && typeof mod.set_particle_params === 'function') {
+    const data = params instanceof Float32Array ? params : new Float32Array(params || []);
+    mod.set_particle_params(data);
+  }
 }
