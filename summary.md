@@ -53,6 +53,17 @@ Script: `scripts/bench/wasm-node-bench.mjs`.
   - `resize_image_mode(id, outW, outH, mode)` where `mode` is 0=nearest, 1=bilinear.
 - Pure Rust helpers (tested): nearest and bilinear RGBA resampling functions validate correctness.
 
+## Recent Changes
+
+- Node WASM benchmark added: `scripts/bench/wasm-node-bench.mjs` with `npm run bench:wasm:node`.
+- Build fix: `wasm:build:node` now outputs to `packages/wasm/pkg-node/` by using `--out-dir pkg-node` relative to the crate.
+- Rust: Added pure image resize helpers (nearest, bilinear) with unit tests in `packages/wasm/src/lib.rs`.
+- Docs: README updated with testing/bench instructions; `agent.md` updated with Node bench workflow.
+
+### Troubleshooting
+
+- Benchmark module not found: ensure the Node build exists at `packages/wasm/pkg-node/` by running `npm run wasm:build:node`.
+
 ## Extensibility Roadmap
 - More engine features (inertia, snap, collisions) moved into WASM.
 - Memory layouts for nodes/pointers/constraints documented in ADRs.

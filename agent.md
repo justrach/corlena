@@ -6,7 +6,8 @@ This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrap
 
 - `packages/wasm/` — Rust crate compiled to WebAssembly via `wasm-pack`.
   - `src/lib.rs` — engine: draggable nodes physics + image store + resize APIs.
-  - `pkg/` — wasm-pack build output (js, wasm, d.ts).
+  - `pkg/` — wasm-pack web build output (js, wasm, d.ts).
+  - `pkg-node/` — wasm-pack Node build output for local benchmarks.
 - `packages/corlena/` — TypeScript package `@corlena/core`.
   - `wasm/` — runtime loader/wrapper for wasm-pack bundle; typed exports.
   - `src/` — small utilities and Svelte helpers used by demos (`stores/interaction.ts`, `actions/resizable.ts`).
@@ -55,8 +56,8 @@ From `@corlena/core/src` helpers used in demos:
 
 ### 2) Build the WASM engine
 
-- `npm run -w @corlena/wasm build`
-- Outputs to `packages/wasm/pkg/`.
+- Web: `npm run -w @corlena/wasm build` → outputs to `packages/wasm/pkg/`.
+- Node (for benchmarks): `npm run wasm:build:node` → outputs to `packages/wasm/pkg-node/`.
 
 ### 3) Update browser-served WASM bundle
 
@@ -81,6 +82,13 @@ Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
 - HUD appears near selected text with A-/A+ and color controls. Interactions don’t blur/commit the editor.
 - Export: click Export to get a PNG Blob with DPR handling.
 
+### 6) Benchmarks (Node + WASM)
+
+- Build Node target: `npm run wasm:build:node`
+- Run bench: `npm run bench:wasm:node`
+- Script: `scripts/bench/wasm-node-bench.mjs`
+- Measures avg `process_frame(dt)` ms and estimated FPS for N=100/1k/5k/10k particles.
+
 ## Coding Notes
 
 - TypeScript: keep types accurate at the wasm boundary; prefer `Uint8Array` for byte buffers and construct `ImageData` via a `Uint8ClampedArray` copy.
@@ -103,6 +111,7 @@ Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
 - WASM not loading? Ensure files exist in `apps/my-app/static/wasm/` and hard refresh the browser.
 - Type errors on `ImageData`: construct via `new Uint8ClampedArray(width * height * 4)` and `.set(u8)`.
 - Drag “jump” regressions: see ADR-0001 and verify grab-offset logic in both WASM and JS fallback.
+ - Benchmark module not found: Ensure Node build output path is `packages/wasm/pkg-node/` (use `npm run wasm:build:node`). The bench imports `../../packages/wasm/pkg-node/corlena_wasm.js`.
 
 ## Quick Links
 

@@ -42,6 +42,7 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 - [x] Root scripts: `wasm:build`, `wasm:build:node`
 - [ ] Add `watch:wasm`
 - [x] Ensure type defs re-exported from `packages/corlena/wasm/index.d.ts`
+ - [x] Fix `wasm:build:node` out-dir to crate-relative `pkg-node` (avoid nested path)
 
 ### Memory Layout + API Surface
 - [ ] Define typed-array layout for nodes: `[id, x, y, w, h, vx, vy, flags] * N`
@@ -88,6 +89,8 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 - [x] README: testing + benchmarks + link to `summary.md`
 - [x] `summary.md`: architecture & workflow overview
 - [ ] ADR: document image resize modes and API semantics (nearest/bilinear)
+ - [x] `agent.md`: Node bench workflow and troubleshooting
+ - [x] ADR-0006: Node WASM bench, build fix, and image resize tests
 
 ### Stretch
 - [ ] Canvas/WebGL renderer path (OffscreenCanvas in Worker) for large scenes
