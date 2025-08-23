@@ -246,6 +246,53 @@ impl Engine {
         arr.copy_from(&out[..]);
         arr
     }
+
+    #[test]
+    fn resize_nearest_2x2_to_4x4_blocks() {
+        // 2x2 image: R, G, B, W
+        let sw = 2u32; let sh = 2u32; let ow = 4u32; let oh = 4u32;
+        let r = [255, 0, 0, 255];
+        let g = [0, 255, 0, 255];
+        let b = [0, 0, 255, 255];
+        let w = [255, 255, 255, 255];
+        let src = [r, g, b, w].concat();
+        let out = resize_nearest_rgba(&src, sw, sh, ow, oh);
+        // Top-left quadrant should be all red
+        for y in 0..(oh / 2) {
+            for x in 0..(ow / 2) {
+                let i = ((y as usize) * (ow as usize) + (x as usize)) * 4;
+                assert_eq!(&out[i..i+4], &r);
+            }
+        }
+        // Bottom-right quadrant should be all white
+        for y in (oh / 2)..oh {
+            for x in (ow / 2)..ow {
+                let i = ((y as usize) * (ow as usize) + (x as usize)) * 4;
+                assert_eq!(&out[i..i+4], &w);
+            }
+        }
+    }
+
+    #[test]
+    fn resize_bilinear_center_pixel_average() {
+        // 2x2 image: R (0,0), G (1,0), B (0,1), W (1,1)
+        let sw = 2u32; let sh = 2u32; let ow = 3u32; let oh = 3u32;
+        let r = [255, 0, 0, 255];
+        let g = [0, 255, 0, 255];
+        let b = [0, 0, 255, 255];
+        let w = [255, 255, 255, 255];
+        let src = [r, g, b, w].concat();
+        let out = resize_bilinear_rgba(&src, sw, sh, ow, oh);
+        // Center pixel should be approx average of all 4 corners
+        let cx = (ow / 2) as usize; let cy = (oh / 2) as usize; // (1,1)
+        let i = (cy * ow as usize + cx) * 4;
+        let px = &out[i..i+4];
+        // Average: ( (255+0+0+255)/4, (0+255+0+255)/4, (0+0+255+255)/4 ) = (128,128,128)
+        assert!((px[0] as i32 - 128).abs() <= 1);
+        assert!((px[1] as i32 - 128).abs() <= 1);
+        assert!((px[2] as i32 - 128).abs() <= 1);
+        assert_eq!(px[3], 255);
+    }
 }
 
 thread_local! {
@@ -366,6 +413,21 @@ pub fn clear_particles() {
 }
 
 #[wasm_bindgen]
+pub fn seed_particles_for_bench(n: u32) {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            eng.particles.clear();
+            let n = n as usize;
+            for i in 0..n {
+                let x = (i % 800) as f32;
+                let y = (i / 800) as f32;
+                eng.particles.push(Particle { x, y, vx: 10.0, vy: -5.0, r: 1.0, life: 10.0 });
+            }
+        }
+    });
+}
+
+#[wasm_bindgen]
 pub fn set_particle_params(params: Float32Array) {
     // [g_x, g_y, damping(0..1), restitution(0..1)]
     ENGINE.with(|e| {
@@ -421,6 +483,71 @@ pub fn resize_image(id: i32, out_w: u32, out_h: u32) -> Uint8Array {
         }
     });
     out
+}
+
+// Pure helpers for testing image resizing logic without wasm-bindgen types.
+fn resize_nearest_rgba(src: &[u8], sw: u32, sh: u32, ow: u32, oh: u32) -> Vec<u8> {
+    let sw = sw.max(1);
+    let sh = sh.max(1);
+    let ow = ow.max(1);
+    let oh = oh.max(1);
+    let mut dst = vec![0u8; (ow as usize) * (oh as usize) * 4];
+    for y in 0..oh {
+        let sy = (y as u64 * sh as u64) / oh as u64;
+        for x in 0..ow {
+            let sx = (x as u64 * sw as u64) / ow as u64;
+            let si = ((sy as usize) * (sw as usize) + (sx as usize)) * 4;
+            let di = ((y as usize) * (ow as usize) + (x as usize)) * 4;
+            dst[di..di + 4].copy_from_slice(&src[si..si + 4]);
+        }
+    }
+    dst
+}
+
+fn resize_bilinear_rgba(src: &[u8], sw: u32, sh: u32, ow: u32, oh: u32) -> Vec<u8> {
+    let sw = sw.max(1);
+    let sh = sh.max(1);
+    let ow = ow.max(1);
+    let oh = oh.max(1);
+    let mut dst = vec![0u8; (ow as usize) * (oh as usize) * 4];
+    let sw_f = sw as f32;
+    let sh_f = sh as f32;
+    let ow_f = ow as f32;
+    let oh_f = oh as f32;
+    for y in 0..oh {
+        let gy = (y as f32) * sh_f / oh_f;
+        let y0 = gy.floor() as i32;
+        let y1 = (y0 + 1).min(sh as i32 - 1).max(0);
+        let wy = gy - (y0 as f32);
+        let y0u = y0.max(0) as usize;
+        let y1u = y1 as usize;
+        for x in 0..ow {
+            let gx = (x as f32) * sw_f / ow_f;
+            let x0 = gx.floor() as i32;
+            let x1 = (x0 + 1).min(sw as i32 - 1).max(0);
+            let wx = gx - (x0 as f32);
+            let x0u = x0.max(0) as usize;
+            let x1u = x1 as usize;
+            let i00 = ((y0u * sw as usize) + x0u) * 4;
+            let i10 = ((y0u * sw as usize) + x1u) * 4;
+            let i01 = ((y1u * sw as usize) + x0u) * 4;
+            let i11 = ((y1u * sw as usize) + x1u) * 4;
+            let di = ((y as usize) * (ow as usize) + (x as usize)) * 4;
+            for ch in 0..4 {
+                let c00 = src[i00 + ch] as f32;
+                let c10 = src[i10 + ch] as f32;
+                let c01 = src[i01 + ch] as f32;
+                let c11 = src[i11 + ch] as f32;
+                let c0 = c00 + (c10 - c00) * wx;
+                let c1 = c01 + (c11 - c01) * wx;
+                let mut v = (c0 + (c1 - c0) * wy).round();
+                if v < 0.0 { v = 0.0; }
+                if v > 255.0 { v = 255.0; }
+                dst[di + ch] = v as u8;
+            }
+        }
+    }
+    dst
 }
 
 #[cfg(test)]

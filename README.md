@@ -2,6 +2,8 @@
 
 Corlena provides Svelte-first primitives for building canvas/media composition UIs: drag, resize, gestures, interaction stores, and an optional Rust/WASM core.
 
+See `summary.md` for a concise architecture and workflow overview.
+
 ## Packages
 - `packages/corlena` (`@corlena/core`): Svelte-native actions and stores (draggable, resizable, droppable, gesture store). Exposes typed APIs for app integration.
 - `packages/wasm` (`@corlena/wasm`): Optional Rust/WASM engine (wasm-bindgen) for heavy transforms. Currently a stub – integrate when features stabilize.
@@ -94,3 +96,69 @@ npm run -w @corlena/core build
 # WASM (optional)
 npm run wasm:build
 ```
+
+## Testing
+
+- **Rust unit tests** (engine physics, image resize helpers as they evolve):
+
+  ```sh
+  npm run test:rust
+  # or directly
+  cargo test --manifest-path packages/wasm/Cargo.toml
+  ```
+
+- **JS tests** (wrapper fallback behavior without WASM pkg):
+
+  ```sh
+  npm run test:js
+  ```
+
+- **Run all**:
+
+  ```sh
+  npm test
+  ```
+
+## Benchmarks (Node, real WASM)
+
+Measure average `process_frame(dt)` time and estimated FPS for various particle counts using Node with the real WebAssembly build.
+
+1) Install `wasm-pack` if needed:
+
+   ```sh
+   # macOS
+   brew install wasm-pack
+   # or via Cargo
+   cargo install wasm-pack
+   ```
+
+2) Build the Node target and run the benchmark:
+
+   ```sh
+   npm run wasm:build:node
+   npm run bench:wasm:node
+   ```
+
+Output format:
+
+```
+WASM particle step benchmark (Node target)
+cols: particles, avg_step_ms, est_fps
+   100       0.035     28450.6
+  1000       0.180      5555.6
+  5000       0.900      1111.1
+ 10000       1.800       555.6
+```
+
+Notes:
+- `avg_step_ms` is the average time per `process_frame` call.
+- `est_fps` = 1000 / `avg_step_ms` (theoretical single-thread max).
+
+## Architecture Overview
+
+- `packages/corlena` (`@corlena/core`): Svelte actions/stores; optional WASM wrapper at `packages/corlena/wasm/index.js` that dynamically loads the generated wasm-bindgen pkg.
+- `packages/wasm`: Rust engine (wasm-bindgen). Exposes stateful APIs like `init`, `process_frame`, particle functions, and image resize (`resize_image`, `resize_image_mode`).
+- `apps/my-app`: SvelteKit example (`/ig` route) wiring drag/resize/text + optional particles.
+
+Data flow (WASM path):
+- JS calls `init()` then per-frame `process_frame(dt)` in WASM; numbers return via typed arrays. DOM updates (CSS transforms/canvas draw) remain in JS for minimal crossings.

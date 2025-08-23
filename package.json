@@ -3,13 +3,15 @@
   "private": true,
   "version": "0.0.1",
   "workspaces": ["packages/*", "apps/*"],
-  "packageManager": "npm@10",
+  "packageManager": "npm@10.0.0",
   "scripts": {
     "dev": "npm run -w demo dev",
     "build": "npm run -w @corlena/core build && npm run -w demo build",
     "wasm:build": "npm run -w @corlena/wasm build",
     "test": "npm run -s test:rust && npm run -s test:js",
     "test:rust": "cargo test --manifest-path packages/wasm/Cargo.toml",
-    "test:js": "node --test test/**/*.test.mjs"
+    "test:js": "node --test test/**/*.test.mjs",
+    "wasm:build:node": "wasm-pack build packages/wasm --target nodejs --out-dir packages/wasm/pkg-node",
+    "bench:wasm:node": "node scripts/bench/wasm-node-bench.mjs"
   }
 }

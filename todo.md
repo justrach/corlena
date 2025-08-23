@@ -37,10 +37,11 @@
 Goal: move heavy per-frame math and state into WASM while keeping DOM updates in JS. Start small (opt-in), measure, then expand.
 
 ### Build + Wiring
-- [ ] Add wasm-pack build: `wasm-pack build packages/wasm --target web --out-dir pkg`
-- [ ] Hook `packages/corlena/wasm/index.js` to load generated `.wasm` and delegate `processFrame`
-- [ ] Script in root `package.json` (e.g., `build:wasm`, `watch:wasm`)
-- [ ] Ensure type defs re-exported from `packages/corlena/wasm/index.d.ts`
+- [x] Add wasm-pack build: `wasm-pack build packages/wasm --target web --out-dir pkg`
+- [x] Hook `packages/corlena/wasm/index.js` to load generated `.wasm` and delegate `processFrame`
+- [x] Root scripts: `wasm:build`, `wasm:build:node`
+- [ ] Add `watch:wasm`
+- [x] Ensure type defs re-exported from `packages/corlena/wasm/index.d.ts`
 
 ### Memory Layout + API Surface
 - [ ] Define typed-array layout for nodes: `[id, x, y, w, h, vx, vy, flags] * N`
@@ -70,7 +71,8 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 - [ ] Deterministic stepping: fixed tick with accumulator
 
 ### Scaling + Perf
-- [ ] Microbenchmarks: JS vs WASM for N=100/1k/10k nodes
+- [x] Microbenchmarks: Node WASM particle step FPS (100/1k/5k/10k)
+- [ ] Add JS-only baseline microbench to compare vs WASM
 - [ ] Minimize JS<->WASM crossings; batch IO
 - [ ] Optional Worker + SharedArrayBuffer plan (note: requires COOP/COEP)
 - [ ] Pixel ratio + world/screen transforms live in WASM
@@ -81,6 +83,11 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 - [x] JS tests: WASM wrapper fallback behavior and APIs
 - [ ] Demo toggles: WASM on/off, node count slider, zoom/pan
 - [ ] Visual correctness checks (snap/bounds/inertia)
+
+## Docs
+- [x] README: testing + benchmarks + link to `summary.md`
+- [x] `summary.md`: architecture & workflow overview
+- [ ] ADR: document image resize modes and API semantics (nearest/bilinear)
 
 ### Stretch
 - [ ] Canvas/WebGL renderer path (OffscreenCanvas in Worker) for large scenes
