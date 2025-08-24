@@ -168,7 +168,7 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
     return () => { canceled = true; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [running, onUsed]);
 
-  async function reseedWasm(n: number, life: number, W: number, H: number) {
+  const reseedWasm = useCallback(async (n: number, life: number, W: number, H: number) => {
     try {
       if (!wasmRef.current) wasmRef.current = (await import('corlena/wasm')) as unknown as WasmApi;
       const wasm = wasmRef.current as WasmApi;
@@ -191,7 +191,7 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
         onUsed();
       }
     } catch {}
-  }
+  }, [onUsed]);
 
   const onPresetCount = useCallback(async (n: number) => {
     setJsCount(n);
