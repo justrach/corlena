@@ -355,7 +355,9 @@ export default function Playground() {
 
   // Ensure the WASM wrapper loads from a stable public URL in production builds
   useEffect(() => {
-    try { (window as any).__CORLENA_WASM_URL__ = '/wasm/corlena_wasm.js'; } catch {}
+    try {
+      (window as Window & { __CORLENA_WASM_URL__?: string }).__CORLENA_WASM_URL__ = '/wasm/corlena_wasm.js';
+    } catch {}
   }, []);
 
   useEffect(() => {
