@@ -14,13 +14,22 @@
     "./wasm": {
       "types": "./wasm/index.d.ts",
       "default": "./wasm/index.js"
+    },
+    "./react": {
+      "types": "./react/index.d.ts",
+      "default": "./react/index.js"
     }
   },
   "dependencies": {
     "@corlena/wasm": "^0.0.1"
   },
   "peerDependencies": {
-    "svelte": "^4 || ^5"
+    "svelte": "^4 || ^5",
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "svelte": { "optional": true },
+    "react": { "optional": true }
   },
   "devDependencies": {
     "svelte": "^4.2.18",
