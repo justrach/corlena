@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 
 export default function Home() {
   const [wasmReady, setWasmReady] = useState(false);
+  const [wasmUsed, setWasmUsed] = useState(false);
   const [initializing, setInitializing] = useState(false);
 
   useEffect(() => {
@@ -25,12 +26,35 @@ export default function Home() {
     try {
       const wasm = await import("corlena/wasm");
       await (wasm as any).init?.(256);
-      setWasmReady(Boolean((wasm as any).isReady?.()));
+      const readyNow = Boolean((wasm as any).isReady?.());
+      setWasmReady(readyNow);
+      // Immediately make a harmless call so badge shows real usage
+      if (readyNow && typeof (wasm as any).processFrame === 'function') {
+        const out = (wasm as any).processFrame({ dt: 0 });
+        if (out && out.transforms !== undefined) setWasmUsed(true);
+      }
     } catch (e) {
       console.warn("WASM init failed (JS fallback will be used)", e);
       setWasmReady(false);
     } finally {
       setInitializing(false);
+    }
+  }
+
+  async function onWasmSmoke() {
+    try {
+      const wasm = await import("corlena/wasm");
+      if (typeof (wasm as any).init === 'function' && !(wasm as any).isReady?.()) {
+        await (wasm as any).init(256);
+      }
+      // Call a real function so badge means "actually used"
+      const out = (wasm as any).processFrame?.({ dt: 0 }) || { transforms: new Float32Array(0) };
+      if (out && out.transforms !== undefined) {
+        setWasmUsed(true);
+        setWasmReady(Boolean((wasm as any).isReady?.()));
+      }
+    } catch (e) {
+      console.warn("WASM smoke failed", e);
     }
   }
 
@@ -46,6 +70,7 @@ export default function Home() {
             <Button onClick={onInitWasm} disabled={initializing}>
               {initializing ? "Initializing WASM…" : "Init WASM"}
             </Button>
+            <Button variant="outline" onClick={onWasmSmoke}>WASM Smoke</Button>
             <a href="/playground">
               <Button variant="outline">Playground</Button>
             </a>
@@ -55,15 +80,15 @@ export default function Home() {
             <a href="https://www.npmjs.com/package/corlena" target="_blank" rel="noreferrer">
               <Button variant="ghost">npm</Button>
             </a>
-            <span className={`inline-flex items-center gap-2 rounded-full border px-3 h-8 text-sm ${wasmReady ? "border-emerald-300 text-emerald-700 bg-emerald-50" : "border-rose-300 text-rose-700 bg-rose-50"}`}>
-              <span className={`inline-block w-2 h-2 rounded-full ${wasmReady ? "bg-emerald-500" : "bg-rose-500"}`} />
-              {wasmReady ? "WASM Enabled" : "JS Fallback"}
+            <span className={`inline-flex items-center gap-2 rounded-full border px-3 h-8 text-sm ${(wasmReady && wasmUsed) ? "border-emerald-300 text-emerald-700 bg-emerald-50" : "border-rose-300 text-rose-700 bg-rose-50"}`}>
+              <span className={`inline-block w-2 h-2 rounded-full ${(wasmReady && wasmUsed) ? "bg-emerald-500" : "bg-rose-500"}`} />
+              {(wasmReady && wasmUsed) ? "WASM Active" : "JS Only"}
             </span>
           </div>
         </section>
 
         <section className="flex justify-center">
-          <div className="relative w-[880px] h-[420px] border border-black/10 rounded-lg bg-white/80 shadow-sm overflow-hidden">
+          <div className="relative w-[880px] h-[420px] border border-black/10 rounded-lg bg-white/80 shadow-sm overflow-hidden" style={{ overscrollBehavior: "contain" }}>
             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(0deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
             <Draggable initial={{ x: 40, y: 48 }}>
               <div className="rounded-md bg-black text-white px-3 py-2 select-none shadow">Drag me</div>

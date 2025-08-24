@@ -4,12 +4,15 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
 export function useDraggable(options = {}) {
-  const { initial = { x: 0, y: 0 }, onMove } = options;
+  const { initial = { x: 0, y: 0 }, onMove, lockScroll = true } = options;
   const [pos, setPos] = useState({ x: initial.x || 0, y: initial.y || 0 });
   const start = useRef({ x: 0, y: 0 });
   const origin = useRef({ x: pos.x, y: pos.y });
 
   const onPointerDown = useCallback((e) => {
+    if (lockScroll) {
+      try { e.preventDefault(); } catch {}
+    }
     const el = e.currentTarget;
     try { el.setPointerCapture?.(e.pointerId); } catch {}
     start.current = { x: e.clientX, y: e.clientY };
@@ -18,6 +21,9 @@ export function useDraggable(options = {}) {
 
   const onPointerMove = useCallback((e) => {
     if (e.buttons === 0) return; // ignore hover moves
+    if (lockScroll) {
+      try { e.preventDefault(); } catch {}
+    }
     const dx = e.clientX - start.current.x;
     const dy = e.clientY - start.current.y;
     const next = { x: origin.current.x + dx, y: origin.current.y + dy };
@@ -48,12 +54,15 @@ export function Draggable({ children, initial, onMove, style, className }) {
 }
 
 export function useResizable(options = {}) {
-  const { initial = { w: 120, h: 80 }, onResize } = options;
+  const { initial = { w: 120, h: 80 }, onResize, lockScroll = true } = options;
   const [size, setSize] = useState({ w: initial.w || 0, h: initial.h || 0 });
   const start = useRef({ x: 0, y: 0 });
   const origin = useRef({ w: size.w, h: size.h });
 
   const onPointerDown = useCallback((e) => {
+    if (lockScroll) {
+      try { e.preventDefault(); } catch {}
+    }
     const el = e.currentTarget;
     try { el.setPointerCapture?.(e.pointerId); } catch {}
     start.current = { x: e.clientX, y: e.clientY };
@@ -62,6 +71,9 @@ export function useResizable(options = {}) {
 
   const onPointerMove = useCallback((e) => {
     if (e.buttons === 0) return;
+    if (lockScroll) {
+      try { e.preventDefault(); } catch {}
+    }
     const dx = e.clientX - start.current.x;
     const dy = e.clientY - start.current.y;
     const next = { w: Math.max(1, origin.current.w + dx), h: Math.max(1, origin.current.h + dy) };
@@ -91,4 +103,3 @@ export function Resizable({ children, style, className, initial, onResize }) {
     </div>
   );
 }
-

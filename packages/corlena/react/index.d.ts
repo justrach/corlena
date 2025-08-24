@@ -6,6 +6,7 @@ export type Size = { w: number; h: number };
 export function useDraggable(options?: {
   initial?: Point;
   onMove?: (pos: Point) => void;
+  lockScroll?: boolean;
 }): {
   x: number;
   y: number;
@@ -29,6 +30,7 @@ export function Draggable(props: {
 export function useResizable(options?: {
   initial?: Size;
   onResize?: (size: Size) => void;
+  lockScroll?: boolean;
 }): {
   w: number;
   h: number;
@@ -47,4 +49,3 @@ export function Resizable(props: {
   style?: React.CSSProperties;
   className?: string;
 }): React.JSX.Element;
-

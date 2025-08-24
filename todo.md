@@ -17,6 +17,12 @@
 - [x] Unit tests: pinch/resample anchoring invariants (applyPinch, anchorResample)
 - [x] Wire particles toggle on `/ig` and disable default on-tap bursts
 
+### Next.js Demos
+- [x] Playground: WASM badge indicates real usage (turns green only after a successful WASM call)
+- [x] Playground: add Image Resizer (WASM) demo using `storeImage` + `resizeImageMode`
+- [x] Playground: add scroll-prevention (`overscroll-behavior: contain`) to interactive panes
+- [x] Home page: badge indicates real usage; add "WASM Smoke" button to call `processFrame`
+
 ## Text Overlay & Export (MVP)
 - [ ] Add text overlay model and rendering in `/canvas`
 - [ ] Inline edit input overlay positioned over text; commit on blur/enter

@@ -16,6 +16,10 @@ This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrap
   - `src/routes/canvas/+page.svelte` — image overlay UI and interactions (baseline canvas demo).
   - `src/routes/ig/+page.svelte` — Instagram-style composer: text overlays with inline editing, HUD, pinch/scroll scaling, export.
   - `static/wasm/` — browser-served wasm bundle copied from `packages/wasm/pkg/`.
+- `apps/nextjs-app/` — Next.js demo app (React hooks/components).
+  - `app/page.tsx` — Home page with draggable/resizable, WASM badge that turns green only after a successful WASM call ("WASM Active").
+  - `app/playground/page.tsx` — Playground with droppable, multi-handle resizer, pinch zoom, and an Image Resizer (WASM) demo calling `storeImage` + `resizeImageMode`.
+  - Uses scroll-prevention on interactive panes via `overscroll-behavior: contain` and `lockScroll` in `useDraggable`/`useResizable`.
 - `docs/adr/` — Architectural Decision Records.
 
 ## Key Concepts

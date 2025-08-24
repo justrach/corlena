@@ -1,3 +1,12 @@
+### Next.js app updates
+
+- `apps/nextjs-app` playground and home page wired to indicate WASM usage accurately.
+  - Badge shows "WASM Active" only after a successful WASM call, not just module readiness.
+  - Clicking "Init WASM" now performs a trivial call (`processFrame({dt:0})`) immediately after init so the badge flips to green if the module initialized successfully (counts as real usage).
+  - Playground: added Image Resizer (WASM) demo that rasterizes an SVG to RGBA, stores via `storeImage`, and resizes with `resizeImageMode` (bilinear).
+  - Added scroll-prevention to interactive panes (`overscroll-behavior: contain`) alongside touch-action guards in hooks.
+  - Home page includes a "WASM Smoke" button calling `processFrame` to validate and flip the badge.
+
 # Corlena Summary
 
 This document explains how the repo fits together and how to develop, test, and benchmark it.
