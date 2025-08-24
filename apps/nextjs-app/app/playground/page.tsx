@@ -353,6 +353,11 @@ export default function Playground() {
   const [wasmUsed, setWasmUsed] = useState(false);
   const [initializing, setInitializing] = useState(false);
 
+  // Ensure the WASM wrapper loads from a stable public URL in production builds
+  useEffect(() => {
+    try { (window as any).__CORLENA_WASM_URL__ = '/wasm/corlena_wasm.js'; } catch {}
+  }, []);
+
   useEffect(() => {
     let t: ReturnType<typeof setInterval> | null = null;
     if (initializing) {
