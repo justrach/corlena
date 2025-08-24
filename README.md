@@ -1,8 +1,20 @@
-# Corlena Monorepo
+# Corlena — Fast, iOS‑friendly Canvas UI Toolkit
 
-Corlena provides Svelte-first primitives for building canvas/media composition UIs: drag, resize, gestures, interaction stores, and an optional Rust/WASM core.
+Corlena is a developer‑first canvas toolkit for building responsive, high‑performance editors and interactive media UIs. It ships Svelte‑native actions and stores for interaction (drag, resize, pinch, gesture state) plus an optional Rust/WebAssembly core for heavy lifting — all tuned to run smoothly on iOS Safari and low‑power devices.
 
-See `summary.md` for a concise architecture and workflow overview.
+Use it to build IG‑style composers, whiteboards, image/video overlays, particle scenes, or any canvas app that needs great touch ergonomics and predictable performance.
+
+See `summary.md` for a concise architecture overview.
+
+## Highlights
+- Fast interactions: predictable 60–120 fps with typed‑array data paths and minimal allocations
+- iOS‑ready by default: correct `touch-action`, passive listeners, scroll lock, pinch/gesture handling, wheel normalization
+- Svelte‑first ergonomics: drop‑in actions (`draggable`, `resizable`, `droppable`) and a composable gesture store
+- Deterministic export: what you draw is what you can save (DPR‑aware)
+- WASM acceleration (optional): Rust core for image transforms, particles, and heavier math; JS fallback always available
+- SSR/Vite‑friendly: clean ESM with SSR‑safe dynamic loading and simple Vite config
+
+Who is this for? Frontend engineers building canvas‑heavy UIs who want reliable touch behavior on iOS, performance that scales, and simple, typed primitives instead of bespoke glue.
 
 ## Packages and Names
 - `packages/corlena` → `corlena`: Svelte-native actions and stores (draggable, resizable, droppable, gesture store). Exposes typed APIs for app integration.
@@ -103,6 +115,16 @@ export default {
 };
 ```
 Notes: do not import JS from `/public` (e.g. `/wasm/...`) in source; to debug a public copy during dev you can set `window.__CORLENA_WASM_URL__` before initializing.
+
+## Why it’s fast
+- Typed arrays and batched state reduce GC churn across frames
+- Minimal cross‑boundary hops; DOM updates (CSS transforms/canvas draw) stay on the JS side
+- Optional WASM moves hotspots (resampling, particle math) into native speed without forcing it on every consumer
+
+## iOS behavior that “just works”
+- Correct `touch-action` defaults to keep pinch/drag behavior stable
+- Optional scroll‑lock during interactions to avoid rubber‑banding
+- Pointer + wheel normalization for gesture parity across platforms
 
 ## Design Notes
 - Library is Svelte-first via actions and stores; WASM boundary is typed-array based to avoid GC churn.
