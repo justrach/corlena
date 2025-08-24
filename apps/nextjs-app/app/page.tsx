@@ -68,7 +68,10 @@ export default function Home() {
   }
 
   return (
-    <div className="font-sans min-h-screen p-8 sm:p-16" style={{ background: '#FFFDF7' }}>
+    <div
+      className="font-sans fixed sm:static inset-0 min-h-dvh sm:min-h-screen overflow-hidden p-8 sm:p-16"
+      style={{ background: '#FFFDF7', overscrollBehavior: 'none' }}
+    >
       <main className="mx-auto max-w-[1100px] flex flex-col gap-8">
         <section className="flex flex-col items-center text-center gap-4">
           <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-[#0D1217]">
