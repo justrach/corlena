@@ -1,5 +1,10 @@
 # Corlena — Fast, iOS‑friendly Canvas UI Toolkit
 
+[![corlena on npm](https://img.shields.io/npm/v/corlena?label=corlena)](https://www.npmjs.com/package/corlena)
+[![corlena downloads](https://img.shields.io/npm/dm/corlena)](https://www.npmjs.com/package/corlena)
+[![@corlena/wasm on npm](https://img.shields.io/npm/v/%40corlena%2Fwasm?label=%40corlena%2Fwasm)](https://www.npmjs.com/package/@corlena/wasm)
+[![@corlena/wasm downloads](https://img.shields.io/npm/dm/%40corlena%2Fwasm)](https://www.npmjs.com/package/@corlena/wasm)
+
 Corlena is a developer‑first canvas toolkit for building responsive, high‑performance editors and interactive media UIs. It ships Svelte‑native actions and stores for interaction (drag, resize, pinch, gesture state) plus an optional Rust/WebAssembly core for heavy lifting — all tuned to run smoothly on iOS Safari and low‑power devices.
 
 Use it to build IG‑style composers, whiteboards, image/video overlays, particle scenes, or any canvas app that needs great touch ergonomics and predictable performance.
