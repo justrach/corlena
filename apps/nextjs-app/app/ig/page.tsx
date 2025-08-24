@@ -50,6 +50,8 @@ export default function IGPage() {
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const rafRef = useRef<number>(0);
   const pointersRef = useRef<Map<number, Pointer>>(new Map());
+  // Holds the latest loop function to avoid TDZ and stale closures
+  const loopFnRef = useRef<() => void>(() => {});
 
   // Local state
   const [imgs, setImgs] = useState<ImgLayer[]>([]);
@@ -90,6 +92,14 @@ export default function IGPage() {
   const interactingRef = useRef(false);
   const justOpenedRef = useRef(false);
   const logFrameRef = useRef(0);
+  const startPXRef = useRef(0);
+  const startPYRef = useRef(0);
+  // Dragging refs to avoid stale state in event handlers
+  const draggingIdRef = useRef<number | null>(null);
+  const draggingTypeRef = useRef<"text" | "image" | null>(null);
+  const dragDXRef = useRef(0);
+  const dragDYRef = useRef(0);
+  const movedRef = useRef(0);
 
   // Selection helpers and overlay positioning (defined early to avoid TDZ issues)
   const getSelectedText = useCallback((): TextNode | null => {
@@ -298,15 +308,19 @@ export default function IGPage() {
       console.log("loop: particles=", (particleBufRef.current.length / 6) | 0, "wasmReady=", wasmReady, "enabled=", particlesEnabled);
     }
     if (logFrameRef.current % 20 === 0) setPCount((particleBufRef.current.length / 6) | 0);
-    rafRef.current = requestAnimationFrame(loop);
+    // RAF scheduling handled by the mount-only effect above
   }, [compose, particlesEnabled, wasmReady]);
 
-  // Ensure RAF picks up latest closure changes (imgs/texts/flags)
+  // Keep ref pointing at the latest loop function
+  useEffect(() => { loopFnRef.current = loop; }, [loop]);
+
+  // Mount-only RAF that calls the latest loop via ref (no TDZ on 'loop')
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(loop);
+    const tick = () => { loopFnRef.current(); rafRef.current = requestAnimationFrame(tick); };
+    rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [loop]);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -351,8 +365,6 @@ export default function IGPage() {
         }
       } catch {}
     })();
-
-    rafRef.current = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -434,6 +446,7 @@ export default function IGPage() {
     setEditingId(node.id);
     setEditingValue(node.text);
     justOpenedRef.current = true;
+    // Do it immediately via microtask to keep it within the user gesture on mobile Safari/iOS
     queueMicrotask(positionInputOverNode);
     queueMicrotask(positionHud);
   }, [positionHud, positionInputOverNode]);
@@ -460,6 +473,13 @@ export default function IGPage() {
 
   // moved earlier
 
+  // When entering edit mode or editing value changes, place the input overlay
+  useEffect(() => {
+    if (editingId == null) return;
+    positionInputOverNode();
+    positionHud();
+  }, [editingId, editingValue, texts, positionInputOverNode, positionHud]);
+
   const stopEdit = useCallback((commit: boolean) => {
     setTexts((prev) => {
       if (editingId == null || !commit) return prev;
@@ -482,7 +502,12 @@ export default function IGPage() {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    startPXRef.current = x;
+    startPYRef.current = y;
+    movedRef.current = 0;
     setMoved(0);
+    draggingIdRef.current = null;
+    draggingTypeRef.current = null;
     setDraggingId(null);
     setDraggingType(null);
 
@@ -586,10 +611,14 @@ export default function IGPage() {
       else if (T.align === "right" || T.align === "end") left = T.x - width;
       const top = T.y - ascent;
       if (x >= left - 8 && x <= left + width + 8 && y >= top - 8 && y <= top + height + 8) {
-        setDraggingId(T.id);
+        draggingIdRef.current = T.id;
+        draggingTypeRef.current = "text";
+        dragDXRef.current = x - T.x;
+        dragDYRef.current = y - T.y;
+        setDraggingId(T.id); // keep UI in sync for bbox
         setDraggingType("text");
-        setDragDX(x - T.x);
-        setDragDY(y - T.y);
+        setDragDX(dragDXRef.current);
+        setDragDY(dragDYRef.current);
         e.preventDefault();
         try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch {}
         return;
@@ -599,10 +628,14 @@ export default function IGPage() {
     for (let i = imgs.length - 1; i >= 0; i--) {
       const L = imgs[i];
       if (x >= L.x && x <= L.x + L.w && y >= L.y && y <= L.y + L.h) {
+        draggingIdRef.current = L.id;
+        draggingTypeRef.current = "image";
+        dragDXRef.current = x - L.x;
+        dragDYRef.current = y - L.y;
         setDraggingId(L.id);
         setDraggingType("image");
-        setDragDX(x - L.x);
-        setDragDY(y - L.y);
+        setDragDX(dragDXRef.current);
+        setDragDY(dragDYRef.current);
         e.preventDefault();
         try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch {}
         return;
@@ -657,13 +690,21 @@ export default function IGPage() {
     }
 
     // Regular drag
-    if (draggingId == null || !draggingType) return;
-    setMoved((prev) => Math.max(prev, Math.hypot(x - (x - dragDX), y - (y - dragDY))));
-    if (draggingType === "text") {
-      setTexts((prev) => prev.map((t) => (t.id === draggingId ? { ...t, x: Math.round(x - dragDX), y: Math.round(y - dragDY) } : t)));
+    const currId = draggingIdRef.current;
+    const currType = draggingTypeRef.current;
+    if (currId == null || !currType) return;
+    const dist = Math.hypot(x - startPXRef.current, y - startPYRef.current);
+    movedRef.current = Math.max(movedRef.current, dist);
+    setMoved((prev) => Math.max(prev, dist));
+    if (currType === "text") {
+      const dx = dragDXRef.current;
+      const dy = dragDYRef.current;
+      setTexts((prev) => prev.map((t) => (t.id === currId ? { ...t, x: Math.round(x - dx), y: Math.round(y - dy) } : t)));
       positionHud();
-    } else if (draggingType === "image") {
-      setImgs((prev) => prev.map((L) => (L.id === draggingId ? { ...L, x: Math.round(x - dragDX), y: Math.round(y - dragDY) } : L)));
+    } else if (currType === "image") {
+      const dx = dragDXRef.current;
+      const dy = dragDYRef.current;
+      setImgs((prev) => prev.map((L) => (L.id === currId ? { ...L, x: Math.round(x - dx), y: Math.round(y - dy) } : L)));
     }
   }, [dragDX, dragDY, draggingId, draggingType, positionHud]);
 
@@ -679,12 +720,45 @@ export default function IGPage() {
       pinchState.current.active = false; pinchState.current.targetType = null; pinchState.current.targetId = null;
     }
 
-    if (draggingId != null && draggingType === "text") {
-      if (moved < 4) {
-        const t = texts.find((n) => n.id === draggingId);
-        if (t) startEdit(t);
+    const currId = draggingIdRef.current;
+    const currType = draggingTypeRef.current;
+    const movedNow = movedRef.current;
+    const TAP_THRESH = 6; // slightly more forgiving
+    let started = false;
+    if (currId != null && currType === "text" && movedNow < TAP_THRESH) {
+      const t = texts.find((n) => n.id === currId);
+      if (t) { startEdit(t); started = true; }
+    }
+    // Fallback: if no drag target recorded but it was a tap, hit-test at up location
+    if (!started && movedNow < TAP_THRESH) {
+      const canvas = canvasRef.current;
+      const ctx = ctxRef.current;
+      if (canvas && ctx) {
+        for (let i = texts.length - 1; i >= 0; i--) {
+          const T = texts[i];
+          ctx.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
+          ctx.textAlign = T.align;
+          const m = ctx.measureText(T.text || " ");
+          const width = Math.max(1, m.width);
+          const { ascent, descent } = getAscentDescent(m, T.fontSize);
+          const height = ascent + descent;
+          let left = T.x;
+          if (T.align === "center") left = T.x - width / 2;
+          else if (T.align === "right" || T.align === "end") left = T.x - width;
+          const top = T.y - ascent;
+          if (px >= left - 8 && px <= left + width + 8 && py >= top - 8 && py <= top + height + 8) {
+            startEdit(T);
+            started = true;
+            break;
+          }
+        }
       }
     }
+    draggingIdRef.current = null;
+    draggingTypeRef.current = null;
+    dragDXRef.current = 0;
+    dragDYRef.current = 0;
+    movedRef.current = 0;
     setDraggingId(null);
     setDraggingType(null);
     setMoved(0);
