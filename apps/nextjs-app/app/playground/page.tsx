@@ -176,10 +176,12 @@ function MultiHandleResizeDemo() {
       <p className="text-sm text-black/70 mb-3">Drag the box or resize from any corner.</p>
 
       <div
-        className="absolute rounded-md bg-gradient-to-br from-indigo-100 to-indigo-300 select-none shadow"
+        className="absolute rounded-md bg-gradient-to-br from-indigo-100 to-indigo-300 select-none shadow grid place-items-center border border-indigo-200"
         style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
         {...drag.bind}
-      />
+      >
+        <span className="text-indigo-900 text-sm">Drag or resize</span>
+      </div>
       <Handle dir="tl" />
       <Handle dir="tr" />
       <Handle dir="bl" />
@@ -191,34 +193,36 @@ function MultiHandleResizeDemo() {
 function PinchZoomDemo() {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [center, setCenter] = useState({ x: 0, y: 0 });
   const touches = useRef(new Map<number, { x: number; y: number }>());
-  const start = useRef({ scale: 1, center: { x: 0, y: 0 }, offset: { x: 0, y: 0 } });
+  const start = useRef({ scale: 1, offset: { x: 0, y: 0 }, center: { x: 0, y: 0 }, dist: 1 });
+
+  const clampScale = (s: number) => Math.max(0.2, Math.min(8, s));
 
   const onWheel = (e: React.WheelEvent) => {
-    if (!e.ctrlKey) return;
+    if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    const factor = Math.exp(-e.deltaY / 300);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    setCenter({ x: cx, y: cy });
-    setScale((s) => Math.max(0.2, Math.min(8, s * factor)));
+    const p = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const factor = Math.exp(-e.deltaY / 300);
+    setScale((s) => {
+      const ns = clampScale(s * factor);
+      setOffset((o) => ({ x: p.x - (ns / s) * (p.x - o.x), y: p.y - (ns / s) * (p.y - o.y) }));
+      return ns;
+    });
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.current.size === 2) {
       const [a, b] = Array.from(touches.current.values());
-      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       start.current = {
         scale,
-        center: { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top },
         offset,
+        center: { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top },
+        dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
       };
-      (start as any).dist = dist;
     }
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -226,9 +230,15 @@ function PinchZoomDemo() {
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.current.size === 2) {
       const [a, b] = Array.from(touches.current.values());
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const cNow = { x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top };
       const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-      const factor = dist / ((start as any).dist || 1);
-      setScale(() => Math.max(0.2, Math.min(8, start.current.scale * factor)));
+      const ns = clampScale((start.current.scale * dist) / Math.max(1e-6, start.current.dist));
+      // Keep the start centroid stable during pinch
+      const p = start.current.center;
+      const s = start.current.scale;
+      setScale(ns);
+      setOffset({ x: p.x - (ns / s) * (p.x - start.current.offset.x), y: p.y - (ns / s) * (p.y - start.current.offset.y) });
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
@@ -240,7 +250,7 @@ function PinchZoomDemo() {
       <h2 className="font-semibold mb-2">Pinch / Wheel Zoom</h2>
       <p className="text-sm text-black/70 mb-3">Use two‑finger pinch (touch) or Ctrl/⌘ + wheel (mouse).</p>
       <div
-        className="relative h-[380px] rounded-md bg-[url('/globe.svg')] bg-no-repeat bg-center bg-[length:320px_320px] overflow-hidden"
+        className="relative h-[380px] rounded-md bg-white overflow-hidden"
         style={{ touchAction: "none" }}
         onWheel={onWheel}
         onPointerDown={onPointerDown}
@@ -249,11 +259,9 @@ function PinchZoomDemo() {
         onPointerCancel={onPointerUp}
       >
         <div
-          className="absolute left-1/2 top-1/2 origin-center"
-          style={{ transform: `translate(-50%, -50%) translate(${center.x}px, ${center.y}px) scale(${scale})` }}
-        >
-          <div className="w-[320px] h-[320px] rounded-md bg-[url('/next.svg')] bg-no-repeat bg-center bg-contain" />
-        </div>
+          className="absolute left-0 top-0 origin-top-left w-[320px] h-[320px] rounded-md bg-[url('/next.svg')] bg-no-repeat bg-center bg-contain border border-black/10"
+          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+        />
       </div>
     </div>
   );
