@@ -1,11 +1,27 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useDraggable } from "corlena/react";
 import { Button } from "../../components/ui/button";
 
 function intersects(a: DOMRect, b: DOMRect) {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
+
+// Narrow module surface we rely on from corlena/wasm
+type WasmApi = {
+  init?: (capacity: number) => Promise<void> | void;
+  isReady?: () => boolean;
+  processFrame?: (opts: { dt: number }) => { particles?: Float32Array; transforms?: Float32Array } | undefined;
+  spawnParticles?: (seed: number[] | Float32Array) => void;
+  clearParticles?: () => void;
+  setConstraints?: (vals: Float32Array) => void;
+  setViewParams?: (a: number, b: number, c: number, d: number) => void;
+  setParticleParams?: (vals: Float32Array) => void;
+  storeImage?: (id: number, data: Uint8Array, w: number, h: number) => boolean;
+  resizeImageMode?: (id: number, w: number, h: number, mode: number) => Uint8Array | undefined;
+};
 
 function ParticleCompare({ onUsed }: { onUsed: () => void }) {
   const jsCanvas = useRef<HTMLCanvasElement | null>(null);
@@ -17,7 +33,7 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
   const lastRef = useRef<number>(performance.now());
   const jsState = useRef<{ x: Float32Array; y: Float32Array; vx: Float32Array; vy: Float32Array } | null>(null);
   const wasmReadyRef = useRef(false);
-  const wasmRef = useRef<any>(null);
+  const wasmRef = useRef<WasmApi | null>(null);
   // Perf telemetry (FPS derived from step+draw time per side)
   const [jsFps, setJsFps] = useState(0);
   const [wasmFps, setWasmFps] = useState(0);
@@ -88,7 +104,7 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
       const jctx = jsc.getContext('2d')!;
       const jsT0 = performance.now();
       stepJs(dt, jsc.width, jsc.height);
-      drawPoints(jctx, [] as any, false);
+      drawPoints(jctx, new Float32Array(0), false);
       const jsMs = performance.now() - jsT0;
       jsMsEma.current = jsMsEma.current ? (jsMsEma.current * 0.9 + jsMs * 0.1) : jsMs;
       jsPtsRef.current = jsState.current?.x.length || 0;
@@ -98,9 +114,9 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
       const wctx = wcanvas.getContext('2d')!;
       try {
         if (!wasmRef.current) {
-          wasmRef.current = await import('corlena/wasm');
+          wasmRef.current = (await import('corlena/wasm')) as unknown as WasmApi;
         }
-        const wasm = wasmRef.current;
+        const wasm = wasmRef.current as WasmApi;
         const ready = Boolean(wasm?.isReady?.());
         wasmReadyRef.current = ready;
         if (ready) {
@@ -154,8 +170,8 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
 
   async function reseedWasm(n: number, life: number, W: number, H: number) {
     try {
-      if (!wasmRef.current) wasmRef.current = await import('corlena/wasm');
-      const wasm = wasmRef.current;
+      if (!wasmRef.current) wasmRef.current = (await import('corlena/wasm')) as unknown as WasmApi;
+      const wasm = wasmRef.current as WasmApi;
       if (typeof wasm.init === 'function' && !wasm.isReady?.()) {
         await wasm.init(4096);
       }
@@ -184,10 +200,10 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
     const H = jsCanvas.current?.height || 240;
     if (running) {
       initJs(W, H, n);
-      try { const jctx = jsCanvas.current!.getContext('2d')!; drawPoints(jctx, [] as any, false); } catch {}
+      try { const jctx = jsCanvas.current!.getContext('2d')!; drawPoints(jctx, new Float32Array(0), false); } catch {}
       await reseedWasm(n, lifePreset, W, H);
     }
-  }, [running, lifePreset]);
+  }, [running, lifePreset, reseedWasm]);
 
   const onPresetLife = useCallback(async (life: number) => {
     setLifePreset(life);
@@ -196,10 +212,10 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
     if (running) {
       // Reseed JS as well (life concept not used in JS, but we reset for parity)
       initJs(W, H, jsCount);
-      try { const jctx = jsCanvas.current!.getContext('2d')!; drawPoints(jctx, [] as any, false); } catch {}
+      try { const jctx = jsCanvas.current!.getContext('2d')!; drawPoints(jctx, new Float32Array(0), false); } catch {}
       await reseedWasm(wasmCount, life, W, H);
     }
-  }, [running, wasmCount, jsCount]);
+  }, [running, wasmCount, jsCount, reseedWasm]);
 
   const onStart = async () => {
     const W = 360, H = 240;
@@ -210,12 +226,12 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
     // Draw initial JS frame immediately
     try {
       const jctx = jsCanvas.current!.getContext('2d')!;
-      drawPoints(jctx, [] as any, false);
+      drawPoints(jctx, new Float32Array(0), false);
     } catch {}
     // Try to seed WASM particles (import/init once)
     try {
-      if (!wasmRef.current) wasmRef.current = await import('corlena/wasm');
-      const wasm = wasmRef.current;
+      if (!wasmRef.current) wasmRef.current = (await import('corlena/wasm')) as unknown as WasmApi;
+      const wasm = wasmRef.current as WasmApi;
       if (typeof wasm.init === 'function' && !wasm.isReady?.()) {
         await wasm.init(4096);
       }
@@ -338,28 +354,29 @@ export default function Playground() {
   const [initializing, setInitializing] = useState(false);
 
   useEffect(() => {
-    let t: any;
+    let t: ReturnType<typeof setInterval> | null = null;
     if (initializing) {
       t = setInterval(async () => {
         try {
-          const wasm = await import("corlena/wasm");
-          setWasmReady(Boolean((wasm as any).isReady?.()));
+          const wasm = (await import("corlena/wasm")) as unknown as WasmApi;
+          setWasmReady(Boolean(wasm.isReady?.()));
         } catch {}
       }, 400);
     }
-    return () => clearInterval(t);
+    return () => { if (t) clearInterval(t); };
   }, [initializing]);
 
   async function onInitWasm() {
     setInitializing(true);
     try {
-      const wasm = await import("corlena/wasm");
-      await (wasm as any).init?.(256);
-      const readyNow = Boolean((wasm as any).isReady?.());
+      const wasm = (await import("corlena/wasm")) as unknown as WasmApi;
+      await wasm.init?.(256);
+      const readyNow = Boolean(wasm.isReady?.());
       setWasmReady(readyNow);
       // Immediately perform a trivial call so the badge reflects real usage
-      if (readyNow && typeof (wasm as any).processFrame === 'function') {
-        const out = (wasm as any).processFrame({ dt: 0 });
+      const proc = wasm.processFrame;
+      if (readyNow && typeof proc === 'function') {
+        const out = proc({ dt: 0 });
         if (out && out.transforms !== undefined) setWasmUsed(true);
       }
     } catch (e) {
@@ -392,9 +409,9 @@ export default function Playground() {
             <Button onClick={onInitWasm} disabled={initializing} className="shadow-sm" style={{ background: '#0D1217', color: '#FFFDF7' }}>
               {initializing ? "Initializing WASM…" : "Init WASM"}
             </Button>
-            <a href="/">
+            <Link href="/">
               <Button variant="outline" className="shadow-sm" style={{ borderColor: '#BFE2F5', color: '#0D1217', background: '#FFFDF7' }}>← Back</Button>
-            </a>
+            </Link>
           </div>
         </header>
 
@@ -458,7 +475,7 @@ function DroppableDemo() {
         {...drag.bind}
         onPointerUp={onDrop}
         className="rounded-md px-3 py-2 select-none shadow inline-block"
-        style={{ ...(drag.bind as any).style, position: "absolute", left: drag.x, top: drag.y, background: '#0D1217', color: '#FFFDF7' }}
+        style={{ ...(((drag.bind as unknown) as { style?: CSSProperties }).style || {}), position: "absolute", left: drag.x, top: drag.y, background: '#0D1217', color: '#FFFDF7' }}
       >
         Drag me
       </div>
@@ -474,11 +491,12 @@ function MultiHandleResizeDemo() {
     return function Handle({ dir }: { dir: "br" | "tr" | "bl" | "tl" }) {
       const start = useRef({ x: 0, y: 0 });
       const orig = useRef(box);
+      type PointerCapEl = Element & { setPointerCapture?(pointerId: number): void; releasePointerCapture?(pointerId: number): void };
       const onPointerDown = (e: React.PointerEvent) => {
         // Prevent parent draggable from starting while resizing
         e.preventDefault();
         e.stopPropagation();
-        (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+        (e.currentTarget as unknown as PointerCapEl).setPointerCapture?.(e.pointerId);
         start.current = { x: e.clientX, y: e.clientY };
         orig.current = box;
       };
@@ -506,7 +524,7 @@ function MultiHandleResizeDemo() {
       const onPointerUp = (e: React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        try { (e.currentTarget as any).releasePointerCapture?.(e.pointerId); } catch {}
+        try { (e.currentTarget as unknown as PointerCapEl).releasePointerCapture?.(e.pointerId); } catch {}
       };
       const pos = {
         tl: { left: box.x - 6, top: box.y - 6, cursor: "nwse-resize" },
@@ -539,7 +557,7 @@ function MultiHandleResizeDemo() {
       <div
         {...drag.bind}
         className="absolute rounded-md select-none shadow grid place-items-center border"
-        style={{ ...(drag.bind as any).style, left: box.x, top: box.y, width: box.w, height: box.h, background: 'linear-gradient(135deg, #FFF8CC, #BFE2F5)', borderColor: '#BFE2F5' }}
+        style={{ ...(((drag.bind as unknown) as { style?: CSSProperties }).style || {}), left: box.x, top: box.y, width: box.w, height: box.h, background: 'linear-gradient(135deg, #FFF8CC, #BFE2F5)', borderColor: '#BFE2F5' }}
       >
         <span className="text-sm" style={{ color: '#0D1217' }}>Drag or resize</span>
       </div>
@@ -573,7 +591,8 @@ function PinchZoomDemo() {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+    type PointerCapEl = Element & { setPointerCapture?(pointerId: number): void };
+    (e.currentTarget as unknown as PointerCapEl).setPointerCapture?.(e.pointerId);
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     if (touches.current.size === 2) {
@@ -664,16 +683,17 @@ function ImageResizerWasm({ onUsed }: { onUsed: () => void }) {
       const ctx = inRef.current!.getContext('2d')!;
       const src = ctx.getImageData(0, 0, w, h);
       setStatus('Initializing WASM…');
-      const wasm = await import('corlena/wasm');
-      if (typeof (wasm as any).init === 'function' && !(wasm as any).isReady?.()) {
-        await (wasm as any).init(256);
+      const wasm = (await import('corlena/wasm')) as unknown as WasmApi;
+      if (typeof wasm.init === 'function' && !wasm.isReady?.()) {
+        await wasm.init(256);
       }
       setStatus('Storing image…');
-      const ok = (wasm as any).storeImage?.(1, src.data, w, h);
+      const rgba = src.data instanceof Uint8ClampedArray ? new Uint8Array(src.data.buffer) : src.data;
+      const ok = wasm.storeImage?.(1, rgba, w, h);
       const outW = Math.max(1, Math.floor(w * 0.5));
       const outH = Math.max(1, Math.floor(h * 0.5));
       setStatus('Resizing…');
-      const out = (wasm as any).resizeImageMode?.(1, outW, outH, 1);
+      const out = wasm.resizeImageMode?.(1, outW, outH, 1);
       if (ok && out && out.length === outW * outH * 4) {
         const o = outRef.current!;
         o.width = outW; o.height = outH;

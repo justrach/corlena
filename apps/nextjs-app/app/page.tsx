@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Draggable, Resizable } from "corlena/react";
 import { Button } from "../components/ui/button";
 
@@ -8,29 +9,37 @@ export default function Home() {
   const [wasmUsed, setWasmUsed] = useState(false);
   const [initializing, setInitializing] = useState(false);
 
+  // Narrowly type the WASM module surface we use
+  type WasmApi = {
+    init?: (capacity: number) => Promise<void> | void;
+    isReady?: () => boolean;
+    processFrame?: (opts: { dt: number }) => { particles?: Float32Array; transforms?: Float32Array } | undefined;
+  };
+
   useEffect(() => {
-    let t: any;
+    let t: ReturnType<typeof setInterval> | null = null;
     if (initializing) {
       t = setInterval(async () => {
         try {
-          const wasm = await import("corlena/wasm");
-          setWasmReady(Boolean((wasm as any).isReady?.()));
+          const wasm = (await import("corlena/wasm")) as unknown as WasmApi;
+          setWasmReady(Boolean(wasm.isReady?.()));
         } catch {}
       }, 400);
     }
-    return () => clearInterval(t);
+    return () => { if (t) clearInterval(t); };
   }, [initializing]);
 
   async function onInitWasm() {
     setInitializing(true);
     try {
-      const wasm = await import("corlena/wasm");
-      await (wasm as any).init?.(256);
-      const readyNow = Boolean((wasm as any).isReady?.());
+      const wasm = (await import("corlena/wasm")) as unknown as WasmApi;
+      await wasm.init?.(256);
+      const readyNow = Boolean(wasm.isReady?.());
       setWasmReady(readyNow);
       // Immediately make a harmless call so badge shows real usage
-      if (readyNow && typeof (wasm as any).processFrame === 'function') {
-        const out = (wasm as any).processFrame({ dt: 0 });
+      const proc = wasm.processFrame;
+      if (readyNow && typeof proc === 'function') {
+        const out = proc({ dt: 0 });
         if (out && out.transforms !== undefined) setWasmUsed(true);
       }
     } catch (e) {
@@ -43,15 +52,15 @@ export default function Home() {
 
   async function onWasmSmoke() {
     try {
-      const wasm = await import("corlena/wasm");
-      if (typeof (wasm as any).init === 'function' && !(wasm as any).isReady?.()) {
-        await (wasm as any).init(256);
+      const wasm = (await import("corlena/wasm")) as unknown as WasmApi;
+      if (typeof wasm.init === 'function' && !wasm.isReady?.()) {
+        await wasm.init(256);
       }
       // Call a real function so badge means "actually used"
-      const out = (wasm as any).processFrame?.({ dt: 0 }) || { transforms: new Float32Array(0) };
+      const out = wasm.processFrame?.({ dt: 0 }) || { transforms: new Float32Array(0) };
       if (out && out.transforms !== undefined) {
         setWasmUsed(true);
-        setWasmReady(Boolean((wasm as any).isReady?.()));
+        setWasmReady(Boolean(wasm.isReady?.()));
       }
     } catch (e) {
       console.warn("WASM smoke failed", e);
@@ -73,9 +82,9 @@ export default function Home() {
               {initializing ? "Initializing WASM…" : "Init WASM"}
             </Button>
             <Button variant="outline" onClick={onWasmSmoke}>WASM Smoke</Button>
-            <a href="/playground">
+            <Link href="/playground">
               <Button variant="outline">Playground</Button>
-            </a>
+            </Link>
             <a href="https://github.com/justrach/corlena" target="_blank" rel="noreferrer">
               <Button variant="outline">GitHub</Button>
             </a>
