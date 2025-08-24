@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../components/ui/button";
 import {
   init as wasmInit,
   isReady as wasmIsReady,
@@ -8,6 +9,7 @@ import {
   setParticleParams as wasmSetParticleParams,
   processFrame as wasmProcessFrame,
   spawnParticles as wasmSpawnParticles,
+  clearParticles as wasmClearParticles,
 } from "corlena/wasm";
 
 // Image layer model
@@ -63,6 +65,8 @@ export default function IGPage() {
   const [particlesEnabled, setParticlesEnabled] = useState(false);
   const [wasmReady, setWasmReady] = useState(false);
   const [hudInteracting, setHudInteracting] = useState(false);
+  // Debug UI state
+  const [pCount, setPCount] = useState(0);
 
   // Pinch state
   const pinchState = useRef({
@@ -85,6 +89,7 @@ export default function IGPage() {
   const particleBufRef = useRef<Float32Array>(new Float32Array(0));
   const interactingRef = useRef(false);
   const justOpenedRef = useRef(false);
+  const logFrameRef = useRef(0);
 
   // Selection helpers and overlay positioning (defined early to avoid TDZ issues)
   const getSelectedText = useCallback((): TextNode | null => {
@@ -162,6 +167,38 @@ export default function IGPage() {
     return { wCss, hCss, dpr };
   }, []);
 
+  // Compose once on content change for immediate feedback
+  useEffect(() => { compose(); }, [imgs, texts]);
+
+  // Respond to particles toggle: spawn a small burst for visibility; clear on disable
+  useEffect(() => {
+    if (!wasmReady) return;
+    if (particlesEnabled) {
+      const canvas = canvasRef.current;
+      const rect = canvas?.getBoundingClientRect();
+      const cx = rect ? rect.width / 2 : 180;
+      const cy = rect ? rect.height * 0.25 : 120;
+      const N = 30;
+      const data = new Float32Array(N * 6);
+      for (let i = 0; i < N; i++) {
+        const ang = (i / N) * Math.PI * 2;
+        const speed = 150 + Math.random() * 150;
+        const vx = Math.cos(ang) * speed;
+        const vy = Math.sin(ang) * speed;
+        const base = i * 6;
+        data[base + 0] = cx;
+        data[base + 1] = cy;
+        data[base + 2] = vx;
+        data[base + 3] = vy;
+        data[base + 4] = 2 + Math.random() * 2.5;
+        data[base + 5] = 1 + Math.random() * 0.8;
+      }
+      try { wasmSpawnParticles(data); } catch {}
+    } else {
+      try { wasmClearParticles(); } catch {}
+    }
+  }, [particlesEnabled, wasmReady]);
+
   const resize = useCallback(() => {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -187,8 +224,7 @@ export default function IGPage() {
     ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
     // Images
     for (const L of imgs) {
-      if (!L.img.complete) continue;
-      ctx.drawImage(L.img, L.x, L.y, L.w, L.h);
+      try { ctx.drawImage(L.img, L.x, L.y, L.w, L.h); } catch {}
     }
     // Particles
     const particleBuf = particleBufRef.current;
@@ -234,6 +270,13 @@ export default function IGPage() {
         ctx.strokeRect(left - 6, top - 6, width + 12, height + 12);
       }
     }
+    // Debug overlay
+    ctx.save();
+    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillStyle = "#9AE6B4";
+    const pc = (particleBufRef.current.length / 6) | 0;
+    ctx.fillText(`imgs:${imgs.length} texts:${texts.length} p:${pc}`, 6, 14);
+    ctx.restore();
   }, [imgs, texts, editingId, editingValue, draggingId, particlesEnabled]);
 
   const loop = useCallback(() => {
@@ -248,8 +291,22 @@ export default function IGPage() {
       particleBufRef.current = new Float32Array(0);
     }
     compose();
+    // Debug: log particles roughly once per second and update UI count
+    logFrameRef.current++;
+    if (logFrameRef.current % 60 === 0) {
+      // eslint-disable-next-line no-console
+      console.log("loop: particles=", (particleBufRef.current.length / 6) | 0, "wasmReady=", wasmReady, "enabled=", particlesEnabled);
+    }
+    if (logFrameRef.current % 20 === 0) setPCount((particleBufRef.current.length / 6) | 0);
     rafRef.current = requestAnimationFrame(loop);
   }, [compose, particlesEnabled, wasmReady]);
+
+  // Ensure RAF picks up latest closure changes (imgs/texts/flags)
+  useEffect(() => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [loop]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -284,6 +341,8 @@ export default function IGPage() {
         await wasmInit(512);
         const ok = wasmIsReady();
         setWasmReady(ok);
+        // eslint-disable-next-line no-console
+        console.log("wasm init ok:", ok);
         if (ok) {
           const { wCss, hCss } = canvasSize();
           wasmSetConstraints(new Float32Array([0, 0, wCss, hCss, 1, 1, 0, 0.999]));
@@ -331,14 +390,22 @@ export default function IGPage() {
   // moved earlier
 
   const addImagesFromFiles = useCallback(async (files: File[]) => {
+    // eslint-disable-next-line no-console
+    console.log("addImagesFromFiles:", files?.length || 0);
     for (const file of files) {
       if (!file || !file.type?.startsWith("image/")) continue;
-      const url = URL.createObjectURL(file);
+      // Use FileReader to avoid any blob URL lifecycle issues
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onerror = () => reject(new Error("read failed"));
+        fr.onload = () => resolve(String(fr.result || ""));
+        fr.readAsDataURL(file);
+      });
       const img = new Image();
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error("Image load failed"));
-        img.src = url;
+        img.src = dataUrl;
       });
       const canvas = canvasRef.current;
       const frameW = canvas?.clientWidth || 360;
@@ -350,11 +417,15 @@ export default function IGPage() {
       const y = Math.round((frameH - h) / 2);
       const id = nextIdRef.current++;
       setImgs((prev) => [...prev, { id, img, x, y, w, h }]);
+      // eslint-disable-next-line no-console
+      console.log("added image layer", { id, w, h, x, y });
     }
   }, []);
 
   const onUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
+    // eslint-disable-next-line no-console
+    console.log("onUpload files:", files.length);
     await addImagesFromFiles(files);
     e.target.value = "";
   }, [addImagesFromFiles]);
@@ -639,7 +710,9 @@ export default function IGPage() {
         data[base + 4] = r;
         data[base + 5] = life;
       }
-      try { wasmSpawnParticles(data); } catch {}
+      // eslint-disable-next-line no-console
+      console.log("spawnParticles at:", { x: px, y: py }, "N=", N);
+      try { wasmSpawnParticles(data); } catch (err) { console.error("spawnParticles error", err); }
     }
   }, [draggingId, draggingType, moved, particlesEnabled, startEdit, texts, wasmReady, positionHud]);
 
@@ -749,121 +822,126 @@ export default function IGPage() {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
+      a.download = "ig-canvas.png";
       a.href = url;
-      a.download = "composition.png";
-      document.body.appendChild(a);
       a.click();
-      a.remove();
       URL.revokeObjectURL(url);
     }, "image/png");
   }, []);
 
-  // Re-compose whenever draw-affecting state changes
-  useEffect(() => { compose(); }, [compose]);
-
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <h2>IG Composer</h2>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input type="file" accept="image/*" multiple onChange={onUpload} />
-        <button onClick={addText}>Add Text</button>
-        <button onClick={exportBlob}>Export PNG</button>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    <div className="font-sans min-h-screen p-8 sm:p-16" style={{ background: '#FFFDF7' }}>
+      <main className="mx-auto max-w-[1100px] flex flex-col gap-8">
+        <section className="flex flex-col gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0D1217' }}>IG Composer</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <input type="file" accept="image/*" multiple onChange={onUpload} />
+            <Button onClick={addText}>Add Text</Button>
+            <Button variant="outline" onClick={exportBlob}>Export PNG</Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => adjustFont(-2)} title="Smaller">A-</Button>
+              <Button variant="outline" onClick={() => adjustFont(+2)} title="Larger">A+</Button>
+              <input
+                type="color"
+                onInput={(e) => setColor((e.target as HTMLInputElement).value)}
+                onChange={(e) => setColor((e.target as HTMLInputElement).value)}
+                title="Text color"
+              />
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={particlesEnabled} onChange={(e) => setParticlesEnabled(e.target.checked)} />
+                <span>Particles</span>
+              </label>
+              <span
+                className={`inline-flex items-center gap-2 rounded-full px-3 h-8 text-sm border`}
+                style={{
+                  background: (wasmReady && particlesEnabled) ? '#AEE6FF' : '#FFCCD5',
+                  color: '#0D1217',
+                  border: '1px solid rgba(13,18,23,0.10)'
+                }}
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: (wasmReady && particlesEnabled) ? '#0EA5E9' : '#E11D48' }}
+                />
+                {(wasmReady && particlesEnabled) ? "WASM Active" : "JS Only"}
+                <span className="text-xs opacity-60 ml-1">({pCount})</span>
+              </span>
+            </div>
+            <span className="text-sm" style={{ color: '#0D1217B3' }}>9:16 canvas. Drag text to position. Click text to edit.</span>
+          </div>
+        </section>
+
+        <section className="flex justify-start">
+          <div
+            ref={frameRef}
+            role="region"
+            aria-label="Canvas drop zone: drop images to add"
+            onDragEnter={onDragEnter}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className="relative w-full max-w-[420px] rounded-lg overflow-hidden border"
+            style={{ aspectRatio: '9 / 16', borderColor: '#BFE2F5', background: '#000', overscrollBehavior: 'contain', overscrollBehaviorY: 'contain' }}
+          >
+            <canvas
+              ref={canvasRef}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerCancel}
+              onPointerLeave={onPointerCancel}
+              onWheel={onWheel}
+              style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none', background: '#000' }}
+            />
+            {dropActive && (
+              <div className="absolute inset-0 grid place-items-center select-none" style={{ background: 'rgba(255,255,255,0.06)', color: '#fff', fontWeight: 600, letterSpacing: 0.3, pointerEvents: 'none', zIndex: 5 }}>
+                Drop images to add
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Text input overlay */}
+        <input
+          ref={inputRef}
+          className="edit-input"
+          onBlur={() => {
+            if (hudInteracting) { queueMicrotask(() => inputRef.current?.focus()); return; }
+            stopEdit(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); stopEdit(true); }
+            if (e.key === "Escape") { e.preventDefault(); stopEdit(false); }
+          }}
+          onInput={(e) => { const v = (e.target as HTMLInputElement).value; setEditingValue(v); positionInputOverNode(); positionHud(); }}
+          style={{ position: "fixed", zIndex: 10, display: "none", padding: 8, borderRadius: 8, border: 0, background: "transparent", outline: "none" }}
+        />
+
+        {/* HUD overlay */}
+        <div
+          ref={hudRef}
+          role="toolbar"
+          aria-label="Text controls"
+          onPointerDown={() => setHudInteracting(true)}
+          onPointerUp={() => setHudInteracting(false)}
+          onPointerCancel={() => setHudInteracting(false)}
+          onPointerLeave={() => setHudInteracting(false)}
+          style={{ position: "fixed", zIndex: 11, display: "none", gap: 6, alignItems: "center", padding: 6, borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(24,24,24,0.8)", backdropFilter: "blur(6px)" }}
+        >
           <button onClick={() => adjustFont(-2)} title="Smaller">A-</button>
           <button onClick={() => adjustFont(+2)} title="Larger">A+</button>
           <input
             type="color"
-            onInput={(e) => setColor((e.target as HTMLInputElement).value)}
+            onTouchStart={() => setHudInteracting(true)}
+            onMouseDown={() => setHudInteracting(true)}
+            onClick={() => setHudInteracting(true)}
             onChange={(e) => setColor((e.target as HTMLInputElement).value)}
-            title="Text color"
+            style={{ width: 28, height: 28, padding: 0, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.6)", background: "transparent" }}
           />
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <input type="checkbox" checked={particlesEnabled} onChange={(e) => setParticlesEnabled(e.target.checked)} />
-            <span>Wire particles</span>
-          </label>
-        </div>
-        <span style={{ color: "#888", fontSize: 12 }}>9:16 canvas. Drag text to position. Click text to edit.</span>
-      </div>
-
-      <div
-        ref={frameRef}
-        role="region"
-        aria-label="Canvas drop zone: drop images to add"
-        onDragEnter={onDragEnter}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        style={{
-          width: "min(420px, 100%)",
-          aspectRatio: "9 / 16",
-          borderRadius: 12,
-          overflow: "hidden",
-          border: "1px solid #2a2a2a",
-          background: "#000",
-          position: "relative",
-          overscrollBehavior: "contain",
-          overscrollBehaviorY: "contain",
-          outline: dropActive ? "2px dashed rgba(255,255,255,0.6)" : undefined,
-          outlineOffset: dropActive ? -6 : undefined,
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
-          onPointerLeave={onPointerCancel}
-          onWheel={onWheel}
-          style={{ width: "100%", height: "100%", display: "block", touchAction: "none", background: "#000" }}
-        />
-        {dropActive && (
-          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "rgba(255,255,255,0.06)", color: "#fff", fontWeight: 600, letterSpacing: 0.3, pointerEvents: "none", zIndex: 5 }}>
-            Drop images to add
-          </div>
-        )}
-      </div>
-
-      {/* Text input overlay */}
-      <input
-        ref={inputRef}
-        className="edit-input"
-        onBlur={() => {
-          if (hudInteracting) { queueMicrotask(() => inputRef.current?.focus()); return; }
-          stopEdit(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); stopEdit(true); }
-          if (e.key === "Escape") { e.preventDefault(); stopEdit(false); }
-        }}
-        onInput={(e) => { const v = (e.target as HTMLInputElement).value; setEditingValue(v); positionInputOverNode(); positionHud(); }}
-        style={{ position: "fixed", zIndex: 10, display: "none", padding: 8, borderRadius: 8, border: 0, background: "transparent", outline: "none" }}
-      />
-
-      {/* HUD overlay */}
-      <div
-        ref={hudRef}
-        role="toolbar"
-        aria-label="Text controls"
-        onPointerDown={() => setHudInteracting(true)}
-        onPointerUp={() => setHudInteracting(false)}
-        onPointerCancel={() => setHudInteracting(false)}
-        onPointerLeave={() => setHudInteracting(false)}
-        style={{ position: "fixed", zIndex: 11, display: "none", gap: 6, alignItems: "center", padding: 6, borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(24,24,24,0.8)", backdropFilter: "blur(6px)" }}
-      >
-        <button onClick={() => adjustFont(-2)} title="Smaller">A-</button>
-        <button onClick={() => adjustFont(+2)} title="Larger">A+</button>
-        <input
-          type="color"
-          onTouchStart={() => setHudInteracting(true)}
-          onMouseDown={() => setHudInteracting(true)}
-          onClick={() => setHudInteracting(true)}
-          onChange={(e) => setColor((e.target as HTMLInputElement).value)}
-          style={{ width: 28, height: 28, padding: 0, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.6)", background: "transparent" }}
-        />
-      </div>
+      </main>
     </div>
   );
 }

@@ -64,15 +64,15 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
 
   const stepJs = (dt: number, w: number, h: number) => {
     const s = jsState.current!;
-    const g = 200; // gravity
+    const g = 900; // gravity (match Svelte demo)
     for (let i = 0; i < s.x.length; i++) {
       s.vy[i] += g * dt;
       s.x[i] += s.vx[i] * dt;
       s.y[i] += s.vy[i] * dt;
-      if (s.x[i] < 0) { s.x[i] = 0; s.vx[i] *= -0.9; }
-      if (s.x[i] > w) { s.x[i] = w; s.vx[i] *= -0.9; }
-      if (s.y[i] < 0) { s.y[i] = 0; s.vy[i] *= -0.9; }
-      if (s.y[i] > h) { s.y[i] = h; s.vy[i] *= -0.9; }
+      if (s.x[i] < 0) { s.x[i] = 0; s.vx[i] *= -0.6; }
+      if (s.x[i] > w) { s.x[i] = w; s.vx[i] *= -0.6; }
+      if (s.y[i] < 0) { s.y[i] = 0; s.vy[i] *= -0.6; }
+      if (s.y[i] > h) { s.y[i] = h; s.vy[i] *= -0.6; }
     }
   };
 
@@ -97,7 +97,7 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
     let canceled = false;
     const loop = async (t: number) => {
       if (canceled) return;
-      const dt = Math.min(0.05, (t - lastRef.current) / 1000);
+      const dt = Math.min(0.032, (t - lastRef.current) / 1000);
       lastRef.current = t;
       // JS side
       const jsc = jsCanvas.current!;
@@ -180,13 +180,14 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
         for (let i = 0; i < n; i++) {
           const x = Math.random() * W, y = Math.random() * H;
           const vx = (Math.random() - 0.5) * 100, vy = (Math.random() - 0.5) * 100;
-          const r = 1.0;
+          const r = 2.0;
           seed.push(x, y, vx, vy, r, life);
         }
         wasm.clearParticles?.();
         wasm.setConstraints?.(new Float32Array([0, 0, W, H, 1, 1, 0, 0.999]));
         wasm.setViewParams?.(1, 0, 0, 1);
-        wasm.setParticleParams?.(new Float32Array([0, 200, 1.0, 0.9]));
+        // gravityX, gravityY, damping, restitution (match Svelte demo)
+        wasm.setParticleParams?.(new Float32Array([0, 900, 0.995, 0.6]));
         wasm.spawnParticles(seed);
         onUsed();
       }
