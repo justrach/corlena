@@ -22,6 +22,8 @@
 - [x] Playground: add Image Resizer (WASM) demo using `storeImage` + `resizeImageMode`
 - [x] Playground: add scroll-prevention (`overscroll-behavior: contain`) to interactive panes
 - [x] Home page: badge indicates real usage; add "WASM Smoke" button to call `processFrame`
+- [x] Playground: fix resize handle UX — prevent drag from interfering during resize (stopPropagation + preventDefault)
+- [x] Playground: add Particles JS vs WASM comparison demo (side-by-side, adjustable counts; marks WASM as used)
 
 ## Text Overlay & Export (MVP)
 - [ ] Add text overlay model and rendering in `/canvas`

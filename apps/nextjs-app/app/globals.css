@@ -76,6 +76,13 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Marina Pastels theme tokens */
+  --mp-primary: #AEE6FF;      /* chips/backgrounds with dark text */
+  --mp-secondary: #FFE3A3;    /* secondary chip */
+  --mp-accent: #FFCCD5;       /* empty states / accents */
+  --mp-bg-light: #FFFDF7;     /* page background */
+  --mp-bg-dark: #0D1217;      /* dark text / primary CTA */
+  --mp-gradient: linear-gradient(135deg, #FFF8CC, #BFE2F5);
 }
 
 .dark {

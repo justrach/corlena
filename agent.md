@@ -20,6 +20,7 @@ This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrap
   - `app/page.tsx` — Home page with draggable/resizable, WASM badge that turns green only after a successful WASM call ("WASM Active").
   - `app/playground/page.tsx` — Playground with droppable, multi-handle resizer, pinch zoom, and an Image Resizer (WASM) demo calling `storeImage` + `resizeImageMode`.
   - Uses scroll-prevention on interactive panes via `overscroll-behavior: contain` and `lockScroll` in `useDraggable`/`useResizable`.
+  - Particle comparison demo (JS vs WASM) renders side-by-side canvases; uses `spawnParticles`/`clearParticles` + `processFrame` when WASM available. Resize handles stop propagation to avoid fighting with drag.
 - `docs/adr/` — Architectural Decision Records.
 
 ## Key Concepts

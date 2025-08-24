@@ -6,6 +6,8 @@
   - Playground: added Image Resizer (WASM) demo that rasterizes an SVG to RGBA, stores via `storeImage`, and resizes with `resizeImageMode` (bilinear).
   - Added scroll-prevention to interactive panes (`overscroll-behavior: contain`) alongside touch-action guards in hooks.
   - Home page includes a "WASM Smoke" button calling `processFrame` to validate and flip the badge.
+  - New: Particle comparison demo (JS vs WASM) on the Playground. Seeds JS particles and, if available, WASM particles via `spawnParticles`/`clearParticles`, and renders both side‑by‑side. Running the demo counts as WASM usage.
+  - Resizer UX polish: resize handles now prevent event propagation to avoid fighting with the draggable during resize; feels stable on touch.
 
 # Corlena Summary
 
