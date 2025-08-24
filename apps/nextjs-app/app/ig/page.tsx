@@ -46,6 +46,7 @@ export default function IGPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hudRef = useRef<HTMLDivElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const rafRef = useRef<number>(0);
@@ -119,7 +120,7 @@ export default function IGPage() {
     ctx.textAlign = T.align;
     const measureText = (editingValue ?? T.text) || " ";
     const metrics = ctx.measureText(measureText);
-    const width = Math.max(60, metrics.width + 16);
+    const width = Math.max(1, metrics.width);
     const { ascent, descent } = getAscentDescent(metrics, T.fontSize);
     const height = ascent + descent;
     let left = T.x;
@@ -129,11 +130,17 @@ export default function IGPage() {
     const rect = canvas.getBoundingClientRect();
     input.style.display = "block";
     input.style.position = "fixed";
-    input.style.left = `${Math.round(rect.left + left - 8)}px`;
-    input.style.top = `${Math.round(rect.top + top - 8)}px`;
-    input.style.width = `${Math.round(width + 16)}px`;
-    input.style.height = `${Math.round(height + 16)}px`;
+    input.style.left = `${rect.left + left}px`;
+    input.style.top = `${rect.top + top}px`;
+    input.style.width = `${width}px`;
+    input.style.height = `${height}px`;
     input.style.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
+    input.style.lineHeight = `${T.fontSize}px`;
+    input.style.letterSpacing = "normal";
+    (input.style as any).fontVariantLigatures = "none";
+    (input.style as any).fontKerning = "none";
+    input.style.whiteSpace = "nowrap";
+    input.style.textAlign = "left";
     input.style.color = "transparent";
     input.style.setProperty("-webkit-text-fill-color", "transparent");
     input.style.caretColor = T.color;
@@ -280,13 +287,7 @@ export default function IGPage() {
         ctx.strokeRect(left - 6, top - 6, width + 12, height + 12);
       }
     }
-    // Debug overlay
-    ctx.save();
-    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.fillStyle = "#9AE6B4";
-    const pc = (particleBufRef.current.length / 6) | 0;
-    ctx.fillText(`imgs:${imgs.length} texts:${texts.length} p:${pc}`, 6, 14);
-    ctx.restore();
+    // Debug overlay removed
   }, [imgs, texts, editingId, editingValue, draggingId, particlesEnabled]);
 
   const loop = useCallback(() => {
@@ -909,7 +910,8 @@ export default function IGPage() {
         <section className="flex flex-col gap-4">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: '#0D1217' }}>IG Composer</h1>
           <div className="flex flex-wrap items-center gap-3">
-            <input type="file" accept="image/*" multiple onChange={onUpload} />
+            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={onUpload} style={{ display: 'none' }} />
+            <Button onClick={() => fileInputRef.current?.click()}>Add Images</Button>
             <Button onClick={addText}>Add Text</Button>
             <Button variant="outline" onClick={exportBlob}>Export PNG</Button>
             <div className="flex items-center gap-2">
@@ -990,7 +992,7 @@ export default function IGPage() {
             if (e.key === "Escape") { e.preventDefault(); stopEdit(false); }
           }}
           onInput={(e) => { const v = (e.target as HTMLInputElement).value; setEditingValue(v); positionInputOverNode(); positionHud(); }}
-          style={{ position: "fixed", zIndex: 10, display: "none", padding: 8, borderRadius: 8, border: 0, background: "transparent", outline: "none" }}
+          style={{ position: "fixed", zIndex: 10, display: "none", padding: 0, borderRadius: 0, border: 0, background: "transparent", outline: "none", boxSizing: 'content-box' }}
         />
 
         {/* HUD overlay */}
