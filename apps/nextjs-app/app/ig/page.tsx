@@ -184,8 +184,7 @@ export default function IGPage() {
     return { wCss, hCss, dpr };
   }, []);
 
-  // Compose once on content change for immediate feedback
-  useEffect(() => { compose(); }, [imgs, texts]);
+  // Compose once on content change for immediate feedback (moved below 'compose' definition)
 
   // Respond to particles toggle: spawn a small burst for visibility; clear on disable
   useEffect(() => {
@@ -305,7 +304,6 @@ export default function IGPage() {
     // Debug: log particles roughly once per second and update UI count
     logFrameRef.current++;
     if (logFrameRef.current % 60 === 0) {
-      // eslint-disable-next-line no-console
       console.log("loop: particles=", (particleBufRef.current.length / 6) | 0, "wasmReady=", wasmReady, "enabled=", particlesEnabled);
     }
     if (logFrameRef.current % 20 === 0) setPCount((particleBufRef.current.length / 6) | 0);
@@ -356,7 +354,6 @@ export default function IGPage() {
         await wasmInit(512);
         const ok = wasmIsReady();
         setWasmReady(ok);
-        // eslint-disable-next-line no-console
         console.log("wasm init ok:", ok);
         if (ok) {
           const { wCss, hCss } = canvasSize();
@@ -403,7 +400,6 @@ export default function IGPage() {
   // moved earlier
 
   const addImagesFromFiles = useCallback(async (files: File[]) => {
-    // eslint-disable-next-line no-console
     console.log("addImagesFromFiles:", files?.length || 0);
     for (const file of files) {
       if (!file || !file.type?.startsWith("image/")) continue;
@@ -430,14 +426,12 @@ export default function IGPage() {
       const y = Math.round((frameH - h) / 2);
       const id = nextIdRef.current++;
       setImgs((prev) => [...prev, { id, img, x, y, w, h }]);
-      // eslint-disable-next-line no-console
       console.log("added image layer", { id, w, h, x, y });
     }
   }, []);
 
   const onUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
-    // eslint-disable-next-line no-console
     console.log("onUpload files:", files.length);
     await addImagesFromFiles(files);
     e.target.value = "";
@@ -707,7 +701,7 @@ export default function IGPage() {
       const dy = dragDYRef.current;
       setImgs((prev) => prev.map((L) => (L.id === currId ? { ...L, x: Math.round(x - dx), y: Math.round(y - dy) } : L)));
     }
-  }, [dragDX, dragDY, draggingId, draggingType, positionHud]);
+  }, [positionHud]);
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -785,11 +779,10 @@ export default function IGPage() {
         data[base + 4] = r;
         data[base + 5] = life;
       }
-      // eslint-disable-next-line no-console
       console.log("spawnParticles at:", { x: px, y: py }, "N=", N);
       try { wasmSpawnParticles(data); } catch (err) { console.error("spawnParticles error", err); }
     }
-  }, [draggingId, draggingType, moved, particlesEnabled, startEdit, texts, wasmReady, positionHud]);
+  }, [particlesEnabled, startEdit, texts, wasmReady, positionHud]);
 
   const onPointerCancel = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     pointersRef.current.delete(e.pointerId);
