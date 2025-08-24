@@ -8,20 +8,36 @@ let ready = false;
 async function tryLoad() {
   if (mod) return mod;
   const override = typeof window !== 'undefined' && window.__CORLENA_WASM_URL__;
-  const candidates = [
-    override,
-    '/wasm/corlena_wasm.js', // recommended: copy pkg into app static dir
-    '/packages/wasm/pkg/corlena_wasm.js' // monorepo dev (may require server.fs.allow)
-  ].filter(Boolean);
-  for (const url of candidates) {
+  // 1) Explicit override URL (public path)
+  if (override) {
     try {
       // eslint-disable-next-line n/no-unsupported-features/es-syntax
-      mod = await import(/* @vite-ignore */ url);
-      break;
+      mod = await import(/* @vite-ignore */ override);
     } catch (_) {
       mod = null;
     }
   }
+  // 2) NPM package: @corlena/wasm (preferred when published as dependency)
+  if (!mod) {
+    try {
+      // Note: literal specifier so bundlers can rewrite and include the wasm asset
+      mod = await import('@corlena/wasm/pkg/corlena_wasm.js');
+    } catch (_) {
+      mod = null;
+    }
+  }
+  // 3) Monolithic publish variant (if wasm pkg is bundled inside 'corlena')
+  // Note: This fallback is disabled since corlena package doesn't bundle wasm
+  // if (!mod) {
+  //   try {
+  //     mod = await import('corlena/pkg/corlena_wasm.js');
+  //   } catch (_) {
+  //     mod = null;
+  //   }
+  // }
+  // Note: Do not import from public/static paths during build/SSR.
+  // Vite disallows importing JS from public, so we avoid fallbacks like
+  // '/wasm/corlena_wasm.js' or '/packages/wasm/pkg/corlena_wasm.js'.
   return mod;
 }
 
@@ -46,6 +62,16 @@ export function reset() {
 
 export function setView(scale) {
   if (mod && typeof mod.set_view === 'function') mod.set_view(Number(scale) || 1);
+}
+
+export function setViewParams(scale, panX, panY, pixelRatio) {
+  if (mod && typeof mod.set_view_params === 'function') {
+    const s = Number(scale) || 1;
+    const px = Number(panX) || 0;
+    const py = Number(panY) || 0;
+    const pr = Number(pixelRatio) || 1;
+    mod.set_view_params(s, px, py, pr);
+  }
 }
 
 export function setConstraints(params) {

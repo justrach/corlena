@@ -6,6 +6,7 @@ export interface FrameOut {
 export function init(capacity?: number): Promise<void>;
 export function reset(): void;
 export function setView(scale: number): void;
+export function setViewParams(scale: number, panX: number, panY: number, pixelRatio: number): void;
 export function setConstraints(params: Float32Array): void;
 export function upsertNodes(nodes: Float32Array): void;
 export function applyPointers(pointers: Float32Array): void;

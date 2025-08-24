@@ -47,10 +47,10 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 ### Memory Layout + API Surface
 - [ ] Define typed-array layout for nodes: `[id, x, y, w, h, vx, vy, flags] * N`
 - [ ] Define constraints layout: `[aId, bId, type, k, rest] * M`
-- [ ] Define pointers layout: `[id, x, y, pressure, buttons] * P`
+- [x] Define pointers layout: `[id, x, y, pressure, buttons] * P`
 - [ ] Expose init/reset: `init(capacity)`, `reset()`; store scene in linear memory
-- [ ] View transform inputs: `set_view(zoom, panX, panY, pixelRatio)`
-- [ ] Output ring buffers: `transforms{nodeId,x,y,angle,scaleX,scaleY}`, `events{type,a,b,data}`
+- [x] View transform inputs: `set_view_params(zoom, panX, panY, pixelRatio)`
+- [x] Output ring buffers: `transforms{nodeId,x,y,angle,scaleX,scaleY}`, `events{type,a,b,data}`
 
 ### First Implementation (MVP)
 - [ ] `process_frame(dt, pointers, nodes, constraints)` updates positions in world space
@@ -76,7 +76,7 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 - [ ] Add JS-only baseline microbench to compare vs WASM
 - [ ] Minimize JS<->WASM crossings; batch IO
 - [ ] Optional Worker + SharedArrayBuffer plan (note: requires COOP/COEP)
-- [ ] Pixel ratio + world/screen transforms live in WASM
+- [x] Pixel ratio + world/screen transforms live in WASM
 
 ### Testing + Demo
 - [ ] Unit tests for memory layout and `process_frame` math
@@ -91,6 +91,7 @@ Goal: move heavy per-frame math and state into WASM while keeping DOM updates in
 - [ ] ADR: document image resize modes and API semantics (nearest/bilinear)
  - [x] `agent.md`: Node bench workflow and troubleshooting
  - [x] ADR-0006: Node WASM bench, build fix, and image resize tests
+ - [x] ADR-0007: Vite module resolution and WASM loader (+ /wasm-test route)
 
 ### Stretch
 - [ ] Canvas/WebGL renderer path (OffscreenCanvas in Worker) for large scenes

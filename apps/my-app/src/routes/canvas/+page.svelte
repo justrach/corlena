@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { startCanvasDemo } from '$lib';
-  import * as wasm from '@corlena/core/wasm';
+  import * as wasm from 'corlena/wasm';
 
   let canvas: HTMLCanvasElement | null = null;
   let handle: { stop(): void; hitAt?: (x: number, y: number) => boolean } | null = null;

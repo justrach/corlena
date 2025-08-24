@@ -5,9 +5,10 @@ use std::collections::HashMap;
 
 // Typed-array layout (MVP):
 // nodes: [id, x, y, w, h, vx, vy, flags] * N
-// pointers: [id, x, y, buttons] * P
+// pointers: [id, x, y, pressure, buttons] * P  (pressure optional; if omitted, stride=4)
 // constraints: [left, top, right, bottom, gridX, gridY, inertia, damping]
 // transforms out: [id, x, y, angle, scaleX, scaleY, reserved] * N
+// events out (ring): [type, a, b, data] * E  (e.g., 1=drag_start, 2=drag_end)
 
 #[derive(Clone, Debug)]
 struct Node {
@@ -47,6 +48,9 @@ struct Engine {
     nodes: Vec<Node>,
     index: HashMap<i32, usize>,
     scale: f32,
+    pan_x: f32,
+    pan_y: f32,
+    pixel_ratio: f32,
     // constraints/state
     left: f32,
     top: f32,
@@ -64,6 +68,8 @@ struct Engine {
     g_y: f32,
     p_damping: f32,
     restitution: f32,
+    // events ring buffer (drain each frame)
+    events: Vec<i32>,
 }
 
 impl Engine {
@@ -71,6 +77,9 @@ impl Engine {
         let mut e = Engine::default();
         e.nodes.reserve(capacity);
         e.scale = 1.0;
+        e.pan_x = 0.0;
+        e.pan_y = 0.0;
+        e.pixel_ratio = 1.0;
         e.left = 0.0;
         e.top = 0.0;
         e.right = f32::INFINITY;
@@ -85,6 +94,7 @@ impl Engine {
         e.g_y = 600.0; // gravity y (px/s^2)
         e.p_damping = 0.999; // per frame exp factor (applied with powf(dt))
         e.restitution = 0.6; // bounce factor
+        e.events = Vec::new();
         e
     }
 
@@ -92,12 +102,14 @@ impl Engine {
         self.nodes.clear();
         self.index.clear();
         self.scale = 1.0;
+        self.pan_x = 0.0; self.pan_y = 0.0; self.pixel_ratio = 1.0;
         self.left = 0.0; self.top = 0.0;
         self.right = f32::INFINITY; self.bottom = f32::INFINITY;
         self.grid_x = 1.0; self.grid_y = 1.0;
         self.inertia = 0.0; self.damping = 1.0;
         self.images.clear();
         self.particles.clear();
+        self.events.clear();
     }
 
     fn upsert_nodes(&mut self, data: &[f32]) {
@@ -127,16 +139,19 @@ impl Engine {
     }
 
     fn apply_pointers(&mut self, data: &[f32]) {
-        // stride 4: [id, x, y, buttons]
-        let stride = 4;
+        // Support stride 5 (with pressure) or 4 (without): [id, x, y, pressure?, buttons]
+        let stride = if data.len() % 5 == 0 { 5 } else { 4 };
         if data.len() % stride != 0 { return; }
         for chunk in data.chunks(stride) {
             let id = chunk[0] as i32;
-            // Convert incoming pointer coords from screen to world using current view scale
+            // Convert incoming pointer coords from screen to world using current view params
             let s = if self.scale > 0.0 { self.scale } else { 1.0 };
-            let x = chunk[1] / s;
-            let y = chunk[2] / s;
-            let buttons = chunk[3];
+            let pr = if self.pixel_ratio > 0.0 { self.pixel_ratio } else { 1.0 };
+            let sx = chunk[1];
+            let sy = chunk[2];
+            let x = (sx / pr - self.pan_x) / s;
+            let y = (sy / pr - self.pan_y) / s;
+            let buttons = if stride == 5 { chunk[4] } else { chunk[3] };
             if let Some(&idx) = self.index.get(&id) {
                 let n = &mut self.nodes[idx];
                 if buttons > 0.0 {
@@ -145,6 +160,8 @@ impl Engine {
                         n.grabbing = true;
                         n.grab_dx = n.x - x;
                         n.grab_dy = n.y - y;
+                        // Event: drag_start(nodeId)
+                        self.events.extend_from_slice(&[1, id as i32, 0, 0]);
                     }
                     n.x = x + n.grab_dx;
                     n.y = y + n.grab_dy;
@@ -152,6 +169,8 @@ impl Engine {
                 } else if n.grabbing {
                     // Release
                     n.grabbing = false;
+                    // Event: drag_end(nodeId)
+                    self.events.extend_from_slice(&[2, id as i32, 0, 0]);
                 }
             }
         }
@@ -278,6 +297,18 @@ pub fn set_view(scale: f32) {
 }
 
 #[wasm_bindgen]
+pub fn set_view_params(scale: f32, pan_x: f32, pan_y: f32, pixel_ratio: f32) {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            eng.scale = if scale > 0.0 { scale } else { 1.0 };
+            eng.pan_x = pan_x;
+            eng.pan_y = pan_y;
+            eng.pixel_ratio = if pixel_ratio > 0.0 { pixel_ratio } else { 1.0 };
+        }
+    });
+}
+
+#[wasm_bindgen]
 pub fn set_constraints(params: Float32Array) {
     ENGINE.with(|e| {
         if let Some(ref mut eng) = *e.borrow_mut() {
@@ -321,12 +352,21 @@ pub fn process_frame(dt: f32) -> JsValue {
     let (transforms, particles, events) = ENGINE.with(|e| {
         let mut transforms = Float32Array::new_with_length(0);
         let mut particles = Float32Array::new_with_length(0);
+        let mut events = Int32Array::new_with_length(0);
         if let Some(ref mut eng) = *e.borrow_mut() {
             eng.step(dt);
             transforms = eng.write_transforms();
             particles = eng.write_particles();
+            // Drain events ring buffer
+            if !eng.events.is_empty() {
+                let len = eng.events.len() as u32;
+                let arr = Int32Array::new_with_length(len);
+                // Copy from Vec<i32> to Int32Array
+                for (i, v) in eng.events.iter().enumerate() { arr.set_index(i as u32, *v); }
+                events = arr;
+                eng.events.clear();
+            }
         }
-        let events = Int32Array::new_with_length(0); // event ring buffer stub
         (transforms, particles, events)
     });
 

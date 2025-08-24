@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { draggable, configure } from '@corlena/core';
+  import { draggable, configure } from 'corlena';
 
   // Optional: tweak defaults
   configure({ defaultCursor: 'grabbing' });

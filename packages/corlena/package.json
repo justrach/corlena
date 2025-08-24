@@ -1,6 +1,6 @@
 {
-  "name": "@corlena/core",
-  "version": "0.0.1",
+  "name": "corlena",
+  "version": "1.0.1",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
@@ -16,11 +16,17 @@
       "default": "./wasm/index.js"
     }
   },
+  "dependencies": {
+    "@corlena/wasm": "^0.0.1"
+  },
   "peerDependencies": {
     "svelte": "^4 || ^5"
   },
   "devDependencies": {
     "svelte": "^4.2.18",
     "typescript": "^5.5.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

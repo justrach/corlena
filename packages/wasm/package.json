@@ -5,5 +5,8 @@
   "files": ["pkg"],
   "scripts": {
     "build": "wasm-pack build --target web --release -d ./pkg"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

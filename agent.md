@@ -8,7 +8,7 @@ This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrap
   - `src/lib.rs` — engine: draggable nodes physics + image store + resize APIs.
   - `pkg/` — wasm-pack web build output (js, wasm, d.ts).
   - `pkg-node/` — wasm-pack Node build output for local benchmarks.
-- `packages/corlena/` — TypeScript package `@corlena/core`.
+- `packages/corlena/` — TypeScript package `corlena`.
   - `wasm/` — runtime loader/wrapper for wasm-pack bundle; typed exports.
   - `src/` — small utilities and Svelte helpers used by demos (`stores/interaction.ts`, `actions/resizable.ts`).
 - `apps/my-app/` — SvelteKit demo.
@@ -26,11 +26,12 @@ This repository is a small monorepo with a Rust→WASM engine, a TypeScript wrap
 
 ## Important APIs
 
-From `@corlena/core/wasm` (see `packages/corlena/wasm/index.js` and `index.d.ts`):
+From `corlena/wasm` (see `packages/corlena/wasm/index.js` and `index.d.ts`):
 
 - `init(capacity?: number): Promise<void>`
 - `reset(): void`
 - `setView(scale: number): void`
+- `setViewParams(scale: number, panX: number, panY: number, pixelRatio: number): void`
 - `setConstraints(params: Float32Array): void`
 - `upsertNodes(nodes: Float32Array): void`
 - `applyPointers(pointers: Float32Array): void`
@@ -41,7 +42,12 @@ From `@corlena/core/wasm` (see `packages/corlena/wasm/index.js` and `index.d.ts`
 
 See ADR-0002 for overlay details; ADR-0003 proposes transforms and bilinear resize.
 
-From `@corlena/core/src` helpers used in demos:
+Notes:
+
+- Pointer layout supports optional pressure: `[id, x, y, pressure, buttons] * P` (if pressure omitted, stride=4).
+- Events ring buffer now exposed from `process_frame`: `[type, a, b, data] * E` (e.g., `1=drag_start`, `2=drag_end`).
+
+From `corlena/src` helpers used in demos:
 
 - `stores/interaction.ts` — `createGestureStore()` Svelte store for simple gesture state.
 - `actions/resizable.ts` — DOM `resizable` action with handles, keyboard resize, min/max & aspect constraints, and optional scroll lock.
@@ -52,21 +58,24 @@ From `@corlena/core/src` helpers used in demos:
 
 - Dev server (workspace name: `my-app`):
   - `npm run -w my-app dev`
-  - open `/canvas` route (baseline) or `/ig` (IG Composer).
+  - open `/canvas` (baseline), `/ig` (IG Composer), `/wasm-test` (WASM smoke test).
 
 ### 2) Build the WASM engine
 
 - Web: `npm run -w @corlena/wasm build` → outputs to `packages/wasm/pkg/`.
 - Node (for benchmarks): `npm run wasm:build:node` → outputs to `packages/wasm/pkg-node/`.
 
-### 3) Update browser-served WASM bundle
+### 3) WASM loading
 
-Copy new artifacts into `apps/my-app/static/wasm/` so the runtime loader finds `/wasm/corlena_wasm.js`:
+Default path loads from the dependency `@corlena/wasm`. No public copy is required.
 
-- `cp packages/wasm/pkg/corlena_wasm.js apps/my-app/static/wasm/corlena_wasm.js`
-- `cp packages/wasm/pkg/corlena_wasm_bg.wasm apps/my-app/static/wasm/corlena_wasm_bg.wasm`
+For dev debugging only, you may serve a public copy under `apps/my-app/static/wasm/` and set in DevTools before init:
 
-Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
+```js
+window.__CORLENA_WASM_URL__ = '/wasm/corlena_wasm.js';
+```
+
+Avoid importing JS from `/public` in source files (Vite restriction).
 
 ### 4) Canvas overlay testing
 
@@ -89,6 +98,22 @@ Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
 - Script: `scripts/bench/wasm-node-bench.mjs`
 - Measures avg `process_frame(dt)` ms and estimated FPS for N=100/1k/5k/10k particles.
 
+### 7) WASM test route
+
+- Route: `/wasm-test` in the demo app.
+- What it does:
+  - Sets `window.__CORLENA_WASM_URL__ = '/wasm/corlena_wasm.js'` so the wrapper can find the wasm-bindgen loader.
+  - Dynamically imports the wrapper via package subpath: `await import('@corlena/core/wasm')`.
+  - Runs a minimal `init → setViewParams → upsertNodes → applyPointers → processFrame` sequence.
+  - Prints `events` and `transforms` to the page, and exposes the module as `window.corlenaWasm` for DevTools usage.
+
+WASM loader & imports:
+
+- Import in app code (Svelte/TS), not from the DevTools console, for reliable Vite rewriting: `import * as wasm from '@corlena/core/wasm'`.
+- If you must use the console, first expose the module in app code: `window.corlenaWasm = await import('@corlena/core/wasm')`.
+- Serve `corlena_wasm.js` and `corlena_wasm_bg.wasm` under `/wasm/` (we copy them into `apps/my-app/static/wasm/`).
+- You can override the path via `window.__CORLENA_WASM_URL__` before `wasm.init(...)`.
+
 ## Coding Notes
 
 - TypeScript: keep types accurate at the wasm boundary; prefer `Uint8Array` for byte buffers and construct `ImageData` via a `Uint8ClampedArray` copy.
@@ -98,7 +123,7 @@ Alternatively, set `window.__CORLENA_WASM_URL__` at runtime to a custom URL.
 ## ADR Process
 
 - Add new ADRs under `docs/adr/` with an incremented number, date, status, context, decision, implementation, consequences, and testing.
-- Example: `0002-image-overlay-resize-wasm.md`, `0003-overlay-transforms-bilinear.md`.
+- Example: `0002-image-overlay-resize-wasm.md`, `0003-overlay-transforms-bilinear.md`, `0007-vite-module-resolution-and-wasm-loader.md`.
 
 ## Safety & Ops
 

@@ -51,6 +51,16 @@ export function set_view(scale) {
 }
 
 /**
+ * @param {number} scale
+ * @param {number} pan_x
+ * @param {number} pan_y
+ * @param {number} pixel_ratio
+ */
+export function set_view_params(scale, pan_x, pan_y, pixel_ratio) {
+    wasm.set_view_params(scale, pan_x, pan_y, pixel_ratio);
+}
+
+/**
  * @param {Float32Array} params
  */
 export function set_constraints(params) {
@@ -91,6 +101,13 @@ export function spawn_particles(data) {
 
 export function clear_particles() {
     wasm.clear_particles();
+}
+
+/**
+ * @param {number} n
+ */
+export function seed_particles_for_bench(n) {
+    wasm.seed_particles_for_bench(n);
 }
 
 /**
@@ -227,6 +244,9 @@ function __wbg_get_imports() {
         const ret = Reflect.set(arg0, arg1, arg2);
         return ret;
     }, arguments) };
+    imports.wbg.__wbg_setindex_492b4871340897de = function(arg0, arg1, arg2) {
+        arg0[arg1 >>> 0] = arg2;
+    };
     imports.wbg.__wbindgen_init_externref_table = function() {
         const table = wasm.__wbindgen_export_2;
         const offset = table.grow(4);

@@ -7,15 +7,13 @@ This document explains how the repo fits together and how to develop, test, and 
 - __Approach__: Keep DOM updates (styles/canvas draws) in JS/Svelte. Push per-frame math/state into WASM when beneficial. Minimize JS↔WASM crossings with typed arrays.
 
 ## Packages
-- __`packages/corlena` (`@corlena/core`)__
-  - Svelte actions: `draggable`, `resizable`, `droppable`.
+- `packages/corlena` (`corlena`): Main Svelte package with actions and stores.
   - Store: `createGestureStore()` for pointers, pinch, etc.
   - WASM wrapper at `packages/corlena/wasm/index.js` to dynamically load the wasm-bindgen bundle and expose `init`, `processFrame`, image helpers, particle APIs.
-- __`packages/wasm` (`@corlena/wasm`)__
-  - Rust crate compiled to WebAssembly via `wasm-bindgen`/`wasm-pack`.
+- `packages/wasm` (`@corlena/wasm`): Rust/WASM engine compiled to WebAssembly via `wasm-bindgen`/`wasm-pack`.
   - Example APIs: `init`, `reset`, `process_frame(dt)`, particle functions, `store_image`, `resize_image`, `resize_image_mode`.
 - __`apps/my-app`__
-  - SvelteKit example with route `/ig` demonstrating upload, overlay, drag/resize, and scaling.
+  - SvelteKit example with routes `/ig` and `/wasm-test` demonstrating upload/overlay and a WASM smoke test.
 
 ## Data Flow (WASM path)
 1. JS calls `init(capacity)` once to allocate internal state in WASM.
@@ -25,7 +23,7 @@ This document explains how the repo fits together and how to develop, test, and 
 
 ## Build & Run
 - __Install__: `npm install`
-- __App dev__: `npm run -w my-app dev` and open `http://localhost:5173/ig`
+- __App dev__: `npm run -w my-app dev` and open `http://localhost:5176/ig` (also `/canvas`, `/wasm-test`)
 - __WASM build (web or node)__:
   - Web: `npm run wasm:build` (see package scripts inside packages)
   - Node for benchmarking: `npm run wasm:build:node`
@@ -59,6 +57,13 @@ Script: `scripts/bench/wasm-node-bench.mjs`.
 - Build fix: `wasm:build:node` now outputs to `packages/wasm/pkg-node/` by using `--out-dir pkg-node` relative to the crate.
 - Rust: Added pure image resize helpers (nearest, bilinear) with unit tests in `packages/wasm/src/lib.rs`.
 - Docs: README updated with testing/bench instructions; `agent.md` updated with Node bench workflow.
+- WASM engine: Added full view params (`set_view_params(scale, panX, panY, pixelRatio)`) and optional pointer pressure in input layout `[id,x,y,pressure?,buttons]`.
+- WASM engine: Exposed events ring buffer from `process_frame(dt)`; events layout `[type,a,b,data]` (1=drag_start, 2=drag_end). JS wrapper now returns `events` and exposes `setViewParams`.
+
+- ADR-0007: Vite module resolution and WASM loader
+  - Import wrapper via `import { draggable } from 'corlena';` in app code.
+  - Console imports can be stale; prefer exposing `window.corlenaWasm` from a page (see `/wasm-test`).
+  - WASM assets served at `/wasm/` with override `window.__CORLENA_WASM_URL__` when needed.
 
 ### Troubleshooting
 

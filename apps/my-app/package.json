@@ -4,7 +4,7 @@
 	"version": "0.0.1",
 	"type": "module",
 	"dependencies": {
-		"@corlena/core": "workspace:*"
+		"corlena": "file:../../packages/corlena"
 	},
 	"scripts": {
 		"dev": "vite dev",

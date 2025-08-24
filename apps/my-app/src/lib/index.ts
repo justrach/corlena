@@ -1,9 +1,9 @@
-// Demo utilities for interacting with the @corlena/core WASM boundary.
+// Demo utilities for interacting with the corlena WASM boundary.
 // This sets up a basic stateful scene with N nodes, optional grid snapping,
 // bounds clamping, and simple inertia. It uses the WASM engine if available
-// (via @corlena/core/wasm), with a JS fallback for local development.
+// (via corlena/wasm), with a JS fallback for local development.
 
-import * as wasm from '@corlena/core/wasm';
+import * as wasm from 'corlena/wasm';
 
 export type DemoOptions = {
   count?: number; // number of nodes

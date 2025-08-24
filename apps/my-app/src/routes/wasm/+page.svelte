@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { startWasmDemo, type DemoOptions } from '$lib';
-  import { isReady } from '@corlena/core/wasm';
+  import { isReady } from 'corlena/wasm';
 
   let container: HTMLDivElement | null = null;
   let handle: { stop(): void } | null = null;

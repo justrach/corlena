@@ -7,7 +7,7 @@
     setParticleParams as wasmSetParticleParams,
     processFrame as wasmProcessFrame,
     spawnParticles as wasmSpawnParticles
-  } from '@corlena/core/wasm';
+  } from 'corlena/wasm';
 
   // Image layer model
   type ImgLayer = { id: number; img: HTMLImageElement; x: number; y: number; w: number; h: number };

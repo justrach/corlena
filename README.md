@@ -4,9 +4,13 @@ Corlena provides Svelte-first primitives for building canvas/media composition U
 
 See `summary.md` for a concise architecture and workflow overview.
 
-## Packages
-- `packages/corlena` (`@corlena/core`): Svelte-native actions and stores (draggable, resizable, droppable, gesture store). Exposes typed APIs for app integration.
-- `packages/wasm` (`@corlena/wasm`): Optional Rust/WASM engine (wasm-bindgen) for heavy transforms. Currently a stub – integrate when features stabilize.
+## Packages and Names
+- `packages/corlena` → `corlena`: Svelte-native actions and stores (draggable, resizable, droppable, gesture store). Exposes typed APIs for app integration.
+- `packages/wasm` → `@corlena/wasm`: Rust/WASM engine (wasm-bindgen) for heavy transforms.
+
+Imports
+- JS APIs: `import * as corlena from 'corlena'`
+- WASM boundary: `import { init, isReady, ... } from 'corlena/wasm'` (internally loads from `@corlena/wasm`)
 
 ## Apps / Examples
 - `apps/my-app`: SvelteKit example app.
@@ -33,18 +37,18 @@ See `summary.md` for a concise architecture and workflow overview.
    # then open http://localhost:5173/ig
    ```
 
-## Using @corlena/core
+## Using corlena
 Install (workspace already wired here):
 
 ```sh
-npm i @corlena/core
+npm i corlena
 ```
 
 ### Actions: draggable, resizable, droppable
 
 ```svelte
 <script lang="ts">
-  import { draggable, resizable } from '@corlena/core';
+  import { draggable, resizable } from 'corlena';
   let pos = { x: 100, y: 120 };
   let size = { w: 240, h: 160 };
   function onDrag(e) { pos = e.detail; }
@@ -60,7 +64,7 @@ npm i @corlena/core
 ### Gesture/Interaction store
 
 ```ts
-import { createGestureStore } from '@corlena/core';
+import { createGestureStore } from 'corlena';
 
 const gestures = createGestureStore();
 gestures.subscribe((state) => {
@@ -71,10 +75,25 @@ gestures.subscribe((state) => {
 ### Optional WASM integration
 
 ```ts
-// When ready to enable Rust/WASM APIs for heavy transforms:
-import wasm from '@corlena/core/wasm';
-// wasm.init(), wasm.transformImage(...), etc. (subject to ADRs as the API evolves)
+// Enable Rust/WASM APIs for heavy transforms
+import { init, isReady, processFrame, resizeImage } from 'corlena/wasm';
+await init(256);
+const ok = isReady();
 ```
+
+Vite setup (SvelteKit)
+
+```ts
+// apps/my-app/vite.config.ts
+import { sveltekit } from '@sveltejs/kit/vite';
+export default {
+  plugins: [sveltekit()],
+  optimizeDeps: { exclude: ['corlena/wasm', '@corlena/wasm'] },
+  ssr: { noExternal: ['corlena', 'corlena/wasm', '@corlena/wasm'] },
+  assetsInclude: ['**/*.wasm']
+};
+```
+Notes: do not import JS from `/public` (e.g. `/wasm/...`) in source; to debug a public copy during dev you can set `window.__CORLENA_WASM_URL__` before initializing.
 
 ## Design Notes
 - Library is Svelte-first via actions and stores; WASM boundary is typed-array based to avoid GC churn.
@@ -91,7 +110,7 @@ npm run -w my-app dev
 npm run -w my-app build
 
 # Core build checks
-npm run -w @corlena/core build
+npm run -w corlena build
 
 # WASM (optional)
 npm run wasm:build
@@ -156,9 +175,19 @@ Notes:
 
 ## Architecture Overview
 
-- `packages/corlena` (`@corlena/core`): Svelte actions/stores; optional WASM wrapper at `packages/corlena/wasm/index.js` that dynamically loads the generated wasm-bindgen pkg.
-- `packages/wasm`: Rust engine (wasm-bindgen). Exposes stateful APIs like `init`, `process_frame`, particle functions, and image resize (`resize_image`, `resize_image_mode`).
-- `apps/my-app`: SvelteKit example (`/ig` route) wiring drag/resize/text + optional particles.
+- `packages/corlena` (`corlena`): Svelte actions/stores; WASM boundary at `packages/corlena/wasm/index.js` that dynamically loads `@corlena/wasm`.
+- `packages/wasm` (`@corlena/wasm`): Rust engine (wasm-bindgen). Exposes stateful APIs like `init`, `process_frame`, particle functions, and image resize (`resize_image`, `resize_image_mode`).
+- `apps/my-app`: SvelteKit example (`/ig`, `/canvas`, `/wasm`) wiring drag/resize/text + optional particles.
 
 Data flow (WASM path):
 - JS calls `init()` then per-frame `process_frame(dt)` in WASM; numbers return via typed arrays. DOM updates (CSS transforms/canvas draw) remain in JS for minimal crossings.
+
+## Release and Publish
+
+- Quick guide: see `apps/my-app/howtomakethiswork.md`.
+- Scripted release from repo root:
+
+```sh
+npm run release:dry   # verify
+npm run release       # publishes @corlena/wasm then corlena
+```

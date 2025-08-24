@@ -5,13 +5,15 @@
   "workspaces": ["packages/*", "apps/*"],
   "packageManager": "npm@10.0.0",
   "scripts": {
-    "dev": "npm run -w demo dev",
-    "build": "npm run -w @corlena/core build && npm run -w demo build",
+    "dev": "npm run -w my-app dev",
+    "build": "npm run -w corlena build && npm run -w my-app build",
     "wasm:build": "npm run -w @corlena/wasm build",
     "test": "npm run -s test:rust && npm run -s test:js",
     "test:rust": "cargo test --manifest-path packages/wasm/Cargo.toml",
     "test:js": "node --test test/**/*.test.mjs",
     "wasm:build:node": "wasm-pack build packages/wasm --target nodejs --out-dir pkg-node",
-    "bench:wasm:node": "node scripts/bench/wasm-node-bench.mjs"
+    "bench:wasm:node": "node scripts/bench/wasm-node-bench.mjs",
+    "release": "bash scripts/release.sh",
+    "release:dry": "bash scripts/release.sh --dry-run"
   }
 }

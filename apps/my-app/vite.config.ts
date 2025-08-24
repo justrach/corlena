@@ -4,11 +4,13 @@ import { sveltekit } from '@sveltejs/kit/vite';
 const config = {
     plugins: [sveltekit()],
     optimizeDeps: {
-        include: ['@corlena/core']
+        // Avoid prebundling the wasm wrapper so Vite can handle the .wasm asset
+        exclude: ['corlena/wasm', '@corlena/wasm']
     },
     ssr: {
-        noExternal: ['@corlena/core']
+        noExternal: ['corlena', 'corlena/wasm', '@corlena/wasm']
     },
+    assetsInclude: ['**/*.wasm'],
     server: {
         host: true,
         port: 5176,

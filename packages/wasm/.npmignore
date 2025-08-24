@@ -1,0 +1,2 @@
+# Intentionally empty to ensure npm uses this file instead of .gitignore
+# and includes the built pkg/ contents in the published tarball.
