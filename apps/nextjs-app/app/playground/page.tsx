@@ -1,6 +1,6 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Draggable, useDraggable } from "corlena/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDraggable } from "corlena/react";
 import { Button } from "../../components/ui/button";
 
 function intersects(a: DOMRect, b: DOMRect) {
@@ -8,14 +8,55 @@ function intersects(a: DOMRect, b: DOMRect) {
 }
 
 export default function Playground() {
+  const [wasmReady, setWasmReady] = useState(false);
+  const [initializing, setInitializing] = useState(false);
+
+  useEffect(() => {
+    let t: any;
+    if (initializing) {
+      t = setInterval(async () => {
+        try {
+          const wasm = await import("corlena/wasm");
+          setWasmReady(Boolean((wasm as any).isReady?.()));
+        } catch {}
+      }, 400);
+    }
+    return () => clearInterval(t);
+  }, [initializing]);
+
+  async function onInitWasm() {
+    setInitializing(true);
+    try {
+      const wasm = await import("corlena/wasm");
+      await (wasm as any).init?.(256);
+      setWasmReady(Boolean((wasm as any).isReady?.()));
+    } catch (e) {
+      console.warn("WASM init failed (JS fallback will be used)", e);
+      setWasmReady(false);
+    } finally {
+      setInitializing(false);
+    }
+  }
+
   return (
     <div className="font-sans min-h-screen p-8 sm:p-16">
       <main className="mx-auto max-w-[1100px] flex flex-col gap-10">
         <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Playground</h1>
-          <a href="/">
-            <Button variant="outline">← Back</Button>
-          </a>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Playground</h1>
+            <span className={`inline-flex items-center gap-2 rounded-full border px-3 h-8 text-sm ${wasmReady ? "border-emerald-300 text-emerald-700 bg-emerald-50" : "border-rose-300 text-rose-700 bg-rose-50"}`}>
+              <span className={`inline-block w-2 h-2 rounded-full ${wasmReady ? "bg-emerald-500" : "bg-rose-500"}`} />
+              {wasmReady ? "WASM Enabled" : "JS Fallback"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={onInitWasm} disabled={initializing}>
+              {initializing ? "Initializing WASM…" : "Init WASM"}
+            </Button>
+            <a href="/">
+              <Button variant="outline">← Back</Button>
+            </a>
+          </div>
         </header>
 
         <section className="grid gap-8 md:grid-cols-2">
@@ -44,6 +85,8 @@ function DroppableDemo() {
     setOver(intersects(z, d));
   }, []);
 
+  const drag = useDraggable({ initial: { x: 24, y: 48 }, onMove: () => onMove() });
+
   const onDrop = useCallback(() => {
     setDropped((v) => over || v);
   }, [over]);
@@ -60,16 +103,15 @@ function DroppableDemo() {
       >
         Drop here
       </div>
-      <Draggable initial={{ x: 24, y: 48 }}>
-        <div
-          ref={dragRef}
-          onPointerUp={onDrop}
-          onPointerMove={onMove}
-          className="rounded-md bg-black text-white px-3 py-2 select-none shadow inline-block"
-        >
-          Drag me
-        </div>
-      </Draggable>
+      <div
+        ref={dragRef}
+        {...drag.bind}
+        onPointerUp={onDrop}
+        className="rounded-md bg-black text-white px-3 py-2 select-none shadow inline-block"
+        style={{ position: "absolute", left: drag.x, top: drag.y, touchAction: "none", userSelect: "none", cursor: "grab" }}
+      >
+        Drag me
+      </div>
     </div>
   );
 }
@@ -216,4 +258,3 @@ function PinchZoomDemo() {
     </div>
   );
 }
-
