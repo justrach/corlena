@@ -137,8 +137,8 @@ export default function IGPage() {
     input.style.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
     input.style.lineHeight = `${T.fontSize}px`;
     input.style.letterSpacing = "normal";
-    (input.style as any).fontVariantLigatures = "none";
-    (input.style as any).fontKerning = "none";
+    input.style.setProperty("font-variant-ligatures", "none");
+    input.style.setProperty("font-kerning", "none");
     input.style.whiteSpace = "nowrap";
     input.style.textAlign = "left";
     input.style.color = "transparent";
