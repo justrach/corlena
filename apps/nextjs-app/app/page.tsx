@@ -46,6 +46,9 @@ export default function Home() {
             <Button onClick={onInitWasm} disabled={initializing}>
               {initializing ? "Initializing WASM…" : "Init WASM"}
             </Button>
+            <a href="/playground">
+              <Button variant="outline">Playground</Button>
+            </a>
             <a href="https://github.com/justrach/corlena" target="_blank" rel="noreferrer">
               <Button variant="outline">GitHub</Button>
             </a>
