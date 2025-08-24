@@ -4,14 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "postinstall": "node scripts/copy-wasm.mjs",
-    "build": "node scripts/copy-wasm.mjs && next build --turbopack",
+    "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "clsx": "^2.1.1",
-    "corlena": "^1.0.1",
+    "corlena": "^1.0.2",
     "next": "15.5.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",

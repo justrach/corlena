@@ -348,17 +348,10 @@ function ParticleCompare({ onUsed }: { onUsed: () => void }) {
   );
 }
 
-export default function Playground() {
+export default function PlaygroundPage() {
   const [wasmReady, setWasmReady] = useState(false);
   const [wasmUsed, setWasmUsed] = useState(false);
   const [initializing, setInitializing] = useState(false);
-
-  // Ensure the WASM wrapper loads from a stable public URL in production builds
-  useEffect(() => {
-    try {
-      (window as Window & { __CORLENA_WASM_URL__?: string }).__CORLENA_WASM_URL__ = '/wasm/corlena_wasm.js';
-    } catch {}
-  }, []);
 
   useEffect(() => {
     let t: ReturnType<typeof setInterval> | null = null;
