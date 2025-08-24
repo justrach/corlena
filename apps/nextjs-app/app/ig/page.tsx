@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   init as wasmInit,
   isReady as wasmIsReady,
@@ -26,6 +26,18 @@ interface TextNode {
 }
 
 type Pointer = { x: number; y: number };
+
+type MetricsExt = TextMetrics & {
+  actualBoundingBoxAscent?: number;
+  actualBoundingBoxDescent?: number;
+};
+
+function getAscentDescent(m: TextMetrics, fontSize: number): { ascent: number; descent: number } {
+  const ext = m as MetricsExt;
+  const ascent = ext.actualBoundingBoxAscent ?? fontSize * 0.8;
+  const descent = ext.actualBoundingBoxDescent ?? fontSize * 0.2;
+  return { ascent, descent };
+}
 
 export default function IGPage() {
   // Refs
@@ -74,6 +86,73 @@ export default function IGPage() {
   const interactingRef = useRef(false);
   const justOpenedRef = useRef(false);
 
+  // Selection helpers and overlay positioning (defined early to avoid TDZ issues)
+  const getSelectedText = useCallback((): TextNode | null => {
+    if (editingId != null) return texts.find((t) => t.id === editingId) || null;
+    if (draggingType === "text" && draggingId != null) return texts.find((t) => t.id === draggingId) || null;
+    return texts.length ? texts[texts.length - 1] : null;
+  }, [draggingId, draggingType, editingId, texts]);
+
+  const positionInputOverNode = useCallback(() => {
+    const input = inputRef.current;
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!input || !canvas || editingId == null || !ctx) return;
+    const T = texts.find((t) => t.id === editingId);
+    if (!T) return;
+    ctx.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
+    ctx.textAlign = T.align;
+    const measureText = (editingValue ?? T.text) || " ";
+    const metrics = ctx.measureText(measureText);
+    const width = Math.max(60, metrics.width + 16);
+    const { ascent, descent } = getAscentDescent(metrics, T.fontSize);
+    const height = ascent + descent;
+    let left = T.x;
+    if (T.align === "center") left = T.x - width / 2;
+    else if (T.align === "right" || T.align === "end") left = T.x - width;
+    const top = T.y - ascent;
+    const rect = canvas.getBoundingClientRect();
+    input.style.display = "block";
+    input.style.position = "fixed";
+    input.style.left = `${Math.round(rect.left + left - 8)}px`;
+    input.style.top = `${Math.round(rect.top + top - 8)}px`;
+    input.style.width = `${Math.round(width + 16)}px`;
+    input.style.height = `${Math.round(height + 16)}px`;
+    input.style.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
+    input.style.color = "transparent";
+    input.style.setProperty("-webkit-text-fill-color", "transparent");
+    input.style.caretColor = T.color;
+    if (input.value !== editingValue) input.value = editingValue;
+    if (justOpenedRef.current) {
+      input.focus();
+      input.select();
+      justOpenedRef.current = false;
+    }
+  }, [editingId, editingValue, texts]);
+
+  const positionHud = useCallback(() => {
+    const hud = hudRef.current;
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!hud || !canvas) return;
+    const sel = getSelectedText();
+    if (editingId == null || !sel || !ctx) { hud.style.display = "none"; return; }
+    ctx.font = `${sel.fontWeight} ${sel.fontSize}px ${sel.fontFamily}`;
+    ctx.textAlign = sel.align;
+    const m = ctx.measureText((sel.id === editingId ? editingValue : sel.text) || " ");
+    const width = Math.max(1, m.width);
+    const { ascent } = getAscentDescent(m, sel.fontSize);
+    const leftBase = sel.align === "center" ? sel.x - width / 2 : (sel.align === "right" || sel.align === "end" ? sel.x - width : sel.x);
+    const topBase = sel.y - ascent;
+    const rect = canvas.getBoundingClientRect();
+    const hudX = Math.max(6, Math.min(rect.left + leftBase + width / 2 - 48, rect.right - 96 - 6));
+    const hudY = rect.top + topBase - 40;
+    hud.style.display = "flex";
+    hud.style.position = "fixed";
+    hud.style.left = `${Math.round(hudX)}px`;
+    hud.style.top = `${Math.round(hudY)}px`;
+  }, [editingId, editingValue, getSelectedText]);
+
   const canvasSize = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return { wCss: 0, hCss: 0, dpr: 1 };
@@ -97,7 +176,7 @@ export default function IGPage() {
     if (wasmReady) {
       wasmSetConstraints(new Float32Array([0, 0, wCss, hCss, 1, 1, 0, 0.999]));
     }
-  }, [canvasSize, editingId, wasmReady]);
+  }, [canvasSize, editingId, wasmReady, positionHud, positionInputOverNode]);
 
   const compose = useCallback(() => {
     const canvas = canvasRef.current;
@@ -145,8 +224,7 @@ export default function IGPage() {
       if (T.id === editingId || T.id === draggingId) {
         const metrics = ctx.measureText(displayText || " ");
         const width = metrics.width;
-        const ascent = (metrics as any).actualBoundingBoxAscent || T.fontSize * 0.8;
-        const descent = (metrics as any).actualBoundingBoxDescent || T.fontSize * 0.2;
+        const { ascent, descent } = getAscentDescent(metrics, T.fontSize);
         const height = ascent + descent;
         let left = x;
         if (T.align === "center") left = x - width / 2;
@@ -227,11 +305,7 @@ export default function IGPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getSelectedText = useCallback((): TextNode | null => {
-    if (editingId != null) return texts.find((t) => t.id === editingId) || null;
-    if (draggingType === "text" && draggingId != null) return texts.find((t) => t.id === draggingId) || null;
-    return texts.length ? texts[texts.length - 1] : null;
-  }, [draggingId, draggingType, editingId, texts]);
+  // moved earlier
 
   const updateSelectedText = useCallback(
     (mut: (t: TextNode) => TextNode) => {
@@ -241,7 +315,7 @@ export default function IGPage() {
       if (editingId === sel.id) positionInputOverNode();
       positionHud();
     },
-    [editingId, getSelectedText]
+    [editingId, getSelectedText, positionHud, positionInputOverNode]
   );
 
   const adjustFont = useCallback((delta: number) => {
@@ -252,72 +326,9 @@ export default function IGPage() {
     updateSelectedText((t) => ({ ...t, color }));
   }, [updateSelectedText]);
 
-  const positionInputOverNode = useCallback(() => {
-    const input = inputRef.current;
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!input || !canvas || editingId == null || !ctx) return;
-    const T = texts.find((t) => t.id === editingId);
-    if (!T) return;
-    ctx.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
-    ctx.textAlign = T.align;
-    const measureText = (editingValue ?? T.text) || " ";
-    const metrics = ctx.measureText(measureText);
-    const width = Math.max(60, metrics.width + 16);
-    const ascent = (metrics as any).actualBoundingBoxAscent || T.fontSize * 0.8;
-    const descent = (metrics as any).actualBoundingBoxDescent || T.fontSize * 0.2;
-    const height = ascent + descent;
-    let left = T.x;
-    if (T.align === "center") left = T.x - width / 2;
-    else if (T.align === "right" || T.align === "end") left = T.x - width;
-    const top = T.y - ascent;
-    const rect = canvas.getBoundingClientRect();
-    input.style.display = "block";
-    input.style.position = "fixed";
-    input.style.left = `${Math.round(rect.left + left - 8)}px`;
-    input.style.top = `${Math.round(rect.top + top - 8)}px`;
-    input.style.width = `${Math.round(width + 16)}px`;
-    input.style.height = `${Math.round(height + 16)}px`;
-    input.style.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
-    input.style.color = "transparent";
-    (input.style as any).webkitTextFillColor = "transparent";
-    input.style.caretColor = T.color;
-    if (input.value !== editingValue) input.value = editingValue;
-    if (justOpenedRef.current) {
-      input.focus();
-      input.select();
-      justOpenedRef.current = false;
-    }
-  }, [editingId, editingValue, texts]);
+  // moved earlier
 
-  const positionHud = useCallback(() => {
-    const hud = hudRef.current;
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!hud || !canvas) return;
-    const sel = getSelectedText();
-    if (editingId == null || !sel || !ctx) { hud.style.display = "none"; return; }
-    ctx.font = `${sel.fontWeight} ${sel.fontSize}px ${sel.fontFamily}`;
-    ctx.textAlign = sel.align;
-    const m = ctx.measureText((sel.id === editingId ? editingValue : sel.text) || " ");
-    const width = Math.max(1, m.width);
-    const ascent = (m as any).actualBoundingBoxAscent || sel.fontSize * 0.8;
-    const leftBase = sel.align === "center" ? sel.x - width / 2 : (sel.align === "right" || sel.align === "end" ? sel.x - width : sel.x);
-    const topBase = sel.y - ascent;
-    const rect = canvas.getBoundingClientRect();
-    const hudX = Math.max(6, Math.min(rect.left + leftBase + width / 2 - 48, rect.right - 96 - 6));
-    const hudY = rect.top + topBase - 40;
-    hud.style.display = "flex";
-    hud.style.position = "fixed";
-    hud.style.left = `${Math.round(hudX)}px`;
-    hud.style.top = `${Math.round(hudY)}px`;
-  }, [editingId, editingValue, getSelectedText]);
-
-  const onUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files ? Array.from(e.target.files) : [];
-    await addImagesFromFiles(files);
-    e.target.value = "";
-  }, []);
+  // moved earlier
 
   const addImagesFromFiles = useCallback(async (files: File[]) => {
     for (const file of files) {
@@ -342,6 +353,20 @@ export default function IGPage() {
     }
   }, []);
 
+  const onUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    await addImagesFromFiles(files);
+    e.target.value = "";
+  }, [addImagesFromFiles]);
+
+  const startEdit = useCallback((node: TextNode) => {
+    setEditingId(node.id);
+    setEditingValue(node.text);
+    justOpenedRef.current = true;
+    queueMicrotask(positionInputOverNode);
+    queueMicrotask(positionHud);
+  }, [positionHud, positionInputOverNode]);
+
   const addText = useCallback(() => {
     const canvas = canvasRef.current;
     const frameW = canvas?.clientWidth || 360;
@@ -360,15 +385,9 @@ export default function IGPage() {
     setTexts((prev) => [...prev, node]);
     startEdit(node);
     queueMicrotask(positionHud);
-  }, [positionHud]);
+  }, [positionHud, startEdit]);
 
-  const startEdit = useCallback((node: TextNode) => {
-    setEditingId(node.id);
-    setEditingValue(node.text);
-    justOpenedRef.current = true;
-    queueMicrotask(positionInputOverNode);
-    queueMicrotask(positionHud);
-  }, [positionHud, positionInputOverNode]);
+  // moved earlier
 
   const stopEdit = useCallback((commit: boolean) => {
     setTexts((prev) => {
@@ -420,8 +439,7 @@ export default function IGPage() {
         ctx.textAlign = T.align;
         const m = ctx.measureText(T.text || " ");
         const width = Math.max(1, m.width);
-        const ascent = (m as any).actualBoundingBoxAscent || T.fontSize * 0.8;
-        const descent = (m as any).actualBoundingBoxDescent || T.fontSize * 0.2;
+        const { ascent, descent } = getAscentDescent(m, T.fontSize);
         const height = ascent + descent;
         let left = T.x;
         if (T.align === "center") left = T.x - width / 2;
@@ -490,8 +508,7 @@ export default function IGPage() {
       ctx.textAlign = T.align;
       const m = ctx.measureText(T.text || " ");
       const width = Math.max(1, m.width);
-      const ascent = (m as any).actualBoundingBoxAscent || T.fontSize * 0.8;
-      const descent = (m as any).actualBoundingBoxDescent || T.fontSize * 0.2;
+      const { ascent, descent } = getAscentDescent(m, T.fontSize);
       const height = ascent + descent;
       let left = T.x;
       if (T.align === "center") left = T.x - width / 2;
@@ -624,7 +641,7 @@ export default function IGPage() {
       }
       try { wasmSpawnParticles(data); } catch {}
     }
-  }, [draggingId, draggingType, moved, particlesEnabled, startEdit, texts, wasmReady]);
+  }, [draggingId, draggingType, moved, particlesEnabled, startEdit, texts, wasmReady, positionHud]);
 
   const onPointerCancel = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     pointersRef.current.delete(e.pointerId);
@@ -666,8 +683,7 @@ export default function IGPage() {
         ctx.textAlign = T.align;
         const m = ctx.measureText(T.text || " ");
         const width = Math.max(1, m.width);
-        const ascent = (m as any).actualBoundingBoxAscent || T.fontSize * 0.8;
-        const descent = (m as any).actualBoundingBoxDescent || T.fontSize * 0.2;
+        const { ascent, descent } = getAscentDescent(m, T.fontSize);
         const height = ascent + descent;
         let left = T.x;
         if (T.align === "center") left = T.x - width / 2;
@@ -707,7 +723,7 @@ export default function IGPage() {
   // Drag & drop overlay handlers on frame
   const onDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setDropActive((prev) => true);
+    setDropActive(true);
   }, []);
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
