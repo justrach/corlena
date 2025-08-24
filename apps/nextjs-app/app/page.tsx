@@ -77,7 +77,7 @@ export default function Home() {
           <p className="max-w-[860px]" style={{ color: '#0D1217B3' }}>
             React + Svelte interactions with optional WebAssembly acceleration. Drag, resize, and gestures that feel natural on iOS Safari and low‑power devices.
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3 gap-y-2">
             <Button onClick={onInitWasm} disabled={initializing}>
               {initializing ? "Initializing WASM…" : "Init WASM"}
             </Button>
@@ -110,7 +110,7 @@ export default function Home() {
 
         <section className="flex justify-center">
           <div
-            className="relative w-[880px] h-[420px] rounded-lg shadow-sm overflow-hidden border"
+            className="relative w-full max-w-[880px] h-[380px] sm:h-[420px] rounded-lg shadow-sm overflow-hidden border"
             style={{ overscrollBehavior: "contain", borderColor: '#BFE2F5', background: '#FFFDF7' }}
           >
             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(0deg,rgba(0,0,0,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
