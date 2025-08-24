@@ -37,12 +37,21 @@ Imports
    # then open http://localhost:5173/ig
    ```
 
-## Using corlena
-Install (workspace already wired here):
+## Install
+
+Use Bun (recommended):
 
 ```sh
-npm i corlena
+bun add corlena @corlena/wasm
 ```
+
+Or with npm:
+
+```sh
+npm i corlena @corlena/wasm
+```
+
+Then import from the packages as usual in your app.
 
 ### Actions: draggable, resizable, droppable
 
