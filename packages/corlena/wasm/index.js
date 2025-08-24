@@ -1,57 +1,21 @@
 // WASM boundary wrapper. Aligns with packages/wasm/src/lib.rs
-// Exposes a state-machine API with graceful fallbacks if the WASM build is absent.
+// Monolithic packaging: statically import wasm-bindgen bundle from local pkg.
+// Bundlers (Vite/Next/Turbopack) will include the .wasm asset automatically.
+
+// These imports are only used when init() is called; the default export triggers
+// instantiation when invoked. The static import ensures assets are discoverable.
+import wasmInit, * as wasmPkg from './pkg/corlena_wasm.js';
 
 let mod = null; // wasm module bindings (from wasm-pack pkg)
 let ready = false;
 
-// Attempt dynamic import of generated pkg (if present). Consumers can also call init() directly.
-async function tryLoad() {
-  if (mod) return mod;
-  const override = typeof window !== 'undefined' && window.__CORLENA_WASM_URL__;
-  // 1) Explicit override URL (public path)
-  if (override) {
-    try {
-      // eslint-disable-next-line n/no-unsupported-features/es-syntax
-      mod = await import(/* @vite-ignore */ override);
-    } catch (_) {
-      mod = null;
-    }
-  }
-  // 2) NPM package: @corlena/wasm (preferred when published as dependency)
-  if (!mod) {
-    try {
-      // Note: literal specifier so bundlers can rewrite and include the wasm asset
-      mod = await import('@corlena/wasm/pkg/corlena_wasm.js');
-    } catch (_) {
-      mod = null;
-    }
-  }
-  // 3) Monolithic publish variant (if wasm pkg is bundled inside 'corlena')
-  // Note: This fallback is disabled since corlena package doesn't bundle wasm
-  // if (!mod) {
-  //   try {
-  //     mod = await import('corlena/pkg/corlena_wasm.js');
-  //   } catch (_) {
-  //     mod = null;
-  //   }
-  // }
-  // Note: Do not import from public/static paths during build/SSR.
-  // Vite disallows importing JS from public, so we avoid fallbacks like
-  // '/wasm/corlena_wasm.js' or '/packages/wasm/pkg/corlena_wasm.js'.
-  return mod;
-}
-
 export async function init(capacity = 256) {
-  const m = await tryLoad();
-  if (m && m.default) {
-    try {
-      await m.default();
-      if (typeof m.init === 'function') m.init(capacity >>> 0);
-      ready = true;
-    } catch (_) {
-      ready = false;
-    }
-  } else {
+  try {
+    await wasmInit();
+    mod = wasmPkg;
+    if (typeof mod.init === 'function') mod.init(capacity >>> 0);
+    ready = true;
+  } catch (_) {
     ready = false;
   }
 }

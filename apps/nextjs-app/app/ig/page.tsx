@@ -61,9 +61,6 @@ export default function IGPage() {
   const [editingValue, setEditingValue] = useState<string>("");
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [draggingType, setDraggingType] = useState<"text" | "image" | null>(null);
-  const [dragDX, setDragDX] = useState(0);
-  const [dragDY, setDragDY] = useState(0);
-  const [moved, setMoved] = useState(0);
   const [dropActive, setDropActive] = useState(false);
   const [particlesEnabled, setParticlesEnabled] = useState(false);
   const [wasmReady, setWasmReady] = useState(false);
@@ -289,6 +286,9 @@ export default function IGPage() {
     // Debug overlay removed
   }, [imgs, texts, editingId, editingValue, draggingId, particlesEnabled]);
 
+  // Compose once on content change for immediate feedback
+  useEffect(() => { compose(); }, [compose, imgs, texts]);
+
   const loop = useCallback(() => {
     const now = performance.now();
     const last = lastTimeRef.current;
@@ -500,7 +500,6 @@ export default function IGPage() {
     startPXRef.current = x;
     startPYRef.current = y;
     movedRef.current = 0;
-    setMoved(0);
     draggingIdRef.current = null;
     draggingTypeRef.current = null;
     setDraggingId(null);
@@ -612,8 +611,6 @@ export default function IGPage() {
         dragDYRef.current = y - T.y;
         setDraggingId(T.id); // keep UI in sync for bbox
         setDraggingType("text");
-        setDragDX(dragDXRef.current);
-        setDragDY(dragDYRef.current);
         e.preventDefault();
         try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch {}
         return;
@@ -629,8 +626,6 @@ export default function IGPage() {
         dragDYRef.current = y - L.y;
         setDraggingId(L.id);
         setDraggingType("image");
-        setDragDX(dragDXRef.current);
-        setDragDY(dragDYRef.current);
         e.preventDefault();
         try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch {}
         return;
@@ -690,7 +685,6 @@ export default function IGPage() {
     if (currId == null || !currType) return;
     const dist = Math.hypot(x - startPXRef.current, y - startPYRef.current);
     movedRef.current = Math.max(movedRef.current, dist);
-    setMoved((prev) => Math.max(prev, dist));
     if (currType === "text") {
       const dx = dragDXRef.current;
       const dy = dragDYRef.current;
@@ -756,7 +750,6 @@ export default function IGPage() {
     movedRef.current = 0;
     setDraggingId(null);
     setDraggingType(null);
-    setMoved(0);
     try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch {}
     positionHud();
     interactingRef.current = pointersRef.current.size > 0;
@@ -791,7 +784,6 @@ export default function IGPage() {
     }
     setDraggingId(null);
     setDraggingType(null);
-    setMoved(0);
     try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch {}
     interactingRef.current = pointersRef.current.size > 0;
   }, []);

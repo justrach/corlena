@@ -25,10 +25,12 @@
       "name": "nextjs-app",
       "version": "0.1.0",
       "dependencies": {
-        "corlena": "file:../../packages/corlena",
+        "clsx": "^2.1.1",
+        "corlena": "^1.0.1",
         "next": "15.5.0",
         "react": "19.1.0",
         "react-dom": "19.1.0",
+        "tailwind-merge": "^3.3.1",
       },
       "devDependencies": {
         "@eslint/eslintrc": "^3",
@@ -45,10 +47,7 @@
     },
     "packages/corlena": {
       "name": "corlena",
-      "version": "1.0.1",
-      "dependencies": {
-        "@corlena/wasm": "^0.0.1",
-      },
+      "version": "1.0.2",
       "devDependencies": {
         "svelte": "^4.2.18",
         "typescript": "^5.5.4",
@@ -64,7 +63,7 @@
     },
     "packages/wasm": {
       "name": "@corlena/wasm",
-      "version": "0.0.1",
+      "version": "0.0.2",
     },
   },
   "packages": {
@@ -996,6 +995,8 @@
 
     "svelte-check": ["svelte-check@4.3.1", "", { "dependencies": { "@jridgewell/trace-mapping": "^0.3.25", "chokidar": "^4.0.1", "fdir": "^6.2.0", "picocolors": "^1.0.0", "sade": "^1.7.4" }, "peerDependencies": { "svelte": "^4.0.0 || ^5.0.0-next.0", "typescript": ">=5.0.0" }, "bin": { "svelte-check": "bin/svelte-check" } }, "sha512-lkh8gff5gpHLjxIV+IaApMxQhTGnir2pNUAqcNgeKkvK5bT/30Ey/nzBxNLDlkztCH4dP7PixkMt9SWEKFPBWg=="],
 
+    "tailwind-merge": ["tailwind-merge@3.3.1", "", {}, "sha512-gBXpgUm/3rp1lMZZrM/w7D8GKqshif0zAymAhbCyIt8KMe+0v9DQ7cdYLR4FHH/cKpdTXb+A/tKKU3eolfsI+g=="],
+
     "tailwindcss": ["tailwindcss@4.1.12", "", {}, "sha512-DzFtxOi+7NsFf7DBtI3BJsynR+0Yp6etH+nRPTbpWnS2pZBaSksv/JGctNwSWzbFjp0vxSqknaUylseZqMDGrA=="],
 
     "tapable": ["tapable@2.2.3", "", {}, "sha512-ZL6DDuAlRlLGghwcfmSn9sK3Hr6ArtyudlSAiCqQ6IfE+b+HHbydbYDIG15IfS5do+7XQQBdBiubF/cV2dnDzg=="],
@@ -1116,13 +1117,11 @@
 
     "micromatch/picomatch": ["picomatch@2.3.1", "", {}, "sha512-JU3teHTNjmE2VCGFzuY8EXzCDVwEqB2a8fsIvwaStHhAWJEeVd1o1QD80CU6+ZdEXXSLbSsuLwJjkCBWqRQUVA=="],
 
-    "my-app/corlena": ["corlena@file:packages/corlena", { "dependencies": { "@corlena/wasm": "^0.0.1" }, "devDependencies": { "svelte": "^4.2.18", "typescript": "^5.5.4" }, "peerDependencies": { "react": "^18 || ^19", "svelte": "^4 || ^5" }, "optionalPeers": ["react", "svelte"] }],
+    "my-app/corlena": ["corlena@file:packages/corlena", { "devDependencies": { "svelte": "^4.2.18", "typescript": "^5.5.4" }, "peerDependencies": { "react": "^18 || ^19", "svelte": "^4 || ^5" }, "optionalPeers": ["react", "svelte"] }],
 
     "my-app/svelte": ["svelte@5.38.2", "", { "dependencies": { "@jridgewell/remapping": "^2.3.4", "@jridgewell/sourcemap-codec": "^1.5.0", "@sveltejs/acorn-typescript": "^1.0.5", "@types/estree": "^1.0.5", "acorn": "^8.12.1", "aria-query": "^5.3.1", "axobject-query": "^4.1.0", "clsx": "^2.1.1", "esm-env": "^1.2.1", "esrap": "^2.1.0", "is-reference": "^3.0.3", "locate-character": "^3.0.0", "magic-string": "^0.30.11", "zimmerframe": "^1.1.2" } }, "sha512-iAcp/oFAWauVSGILdD67n7DiwgLHXZzWZIdzl7araRxu72jUr7PFAo2Iie7gXt0IbnlYvhxCb9GT3ZJUquO3PA=="],
 
     "next/postcss": ["postcss@8.4.31", "", { "dependencies": { "nanoid": "^3.3.6", "picocolors": "^1.0.0", "source-map-js": "^1.0.2" } }, "sha512-PS08Iboia9mts/2ygV3eLpY5ghnUcfLV/EXTOW1E2qYxJKGGBUtNjN76FYHnMs36RmARn41bC0AZmn+rR0OVpQ=="],
-
-    "nextjs-app/corlena": ["corlena@file:packages/corlena", { "dependencies": { "@corlena/wasm": "^0.0.1" }, "devDependencies": { "svelte": "^4.2.18", "typescript": "^5.5.4" }, "peerDependencies": { "react": "^18 || ^19", "svelte": "^4 || ^5" }, "optionalPeers": ["react", "svelte"] }],
 
     "sharp/semver": ["semver@7.7.2", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-RF0Fw+rO5AMf9MAyaRXI4AV0Ulj5lMHqVxxdSgiVbixSCXoEmmX/jk0CuJw4+3SqroYO9VoUh+HcuJivvtJemA=="],
 

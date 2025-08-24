@@ -1,10 +1,18 @@
 {
   "name": "corlena",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "files": [
+    "src",
+    "react",
+    "wasm"
+  ],
+  "scripts": {
+    "build": "node ./scripts/sync-wasm.mjs"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -20,9 +28,7 @@
       "default": "./react/index.js"
     }
   },
-  "dependencies": {
-    "@corlena/wasm": "^0.0.1"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "svelte": "^4 || ^5",
     "react": "^18 || ^19"
