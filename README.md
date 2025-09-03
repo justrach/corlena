@@ -31,16 +31,21 @@ See `summary.md` for a concise architecture overview.
 Who is this for? Frontend engineers building canvas‑heavy UIs who want reliable touch behavior on iOS, performance that scales, and simple, typed primitives instead of bespoke glue.
 
 ## Packages and Names
-- `packages/corlena` → `corlena`: Svelte-native actions and stores (draggable, resizable, droppable, gesture store). Exposes typed APIs for app integration.
-- `packages/wasm` → `@corlena/wasm`: Rust/WASM engine (wasm-bindgen) for heavy transforms.
+- `packages/corlena` → `corlena`: Core library with Svelte-native actions and stores (draggable, resizable, droppable, gesture store), plus React and Svelte scene overlays. Exposes typed APIs for app integration.
+- `packages/wasm` → `@corlena/wasm`: Rust/WASM engine (wasm-bindgen) for heavy transforms and physics simulation.
 
 Imports
 - JS APIs: `import * as corlena from 'corlena'`
+- React scene overlay: `import { SceneProvider, DomLayer, DomNode } from 'corlena/react'`
+- Svelte scene overlay: `import { SceneProvider, DomLayer, DomNode } from 'corlena/svelte'`
 - WASM boundary: `import { init, isReady, ... } from 'corlena/wasm'` (internally loads from `@corlena/wasm`)
 
 ## Apps / Examples
 - `apps/my-app`: SvelteKit example app.
   - Route `/ig`: Instagram-style 9:16 canvas example demonstrating image upload, text overlay, live inline editing, drag, and pinch/wheel scaling. This is an example of how to use the primitives, not the library itself.
+  - Route `/scene`: Interactive scene overlay with draggable nodes using WASM physics integration.
+- `apps/nextjs-app`: Next.js example app.
+  - Route `/scene`: React scene overlay demo with identical dragging functionality.
 
 ## Quick Start
 1) Install deps
@@ -107,6 +112,60 @@ gestures.subscribe((state) => {
 });
 ```
 
+### Scene Overlays (React & Svelte)
+
+Interactive scene overlays with WASM physics integration for draggable nodes:
+
+**React:**
+```tsx
+import { SceneProvider, DomLayer, DomNode } from 'corlena/react';
+
+function MyScene() {
+  return (
+    <SceneProvider tapParams={[0.1, 2.0, 0.3, 0.05]} capacity={256}>
+      {({ ready }) => (
+        <DomLayer>
+          <DomNode 
+            id={1}
+            style={{ width: '140px', height: '90px', background: '#2a2a2a' }}
+            onTap={(id) => console.log('Tapped:', id)}
+            onDragStart={(id) => console.log('Drag start:', id)}
+            onDragEnd={(id) => console.log('Drag end:', id)}
+          >
+            Node 1 {ready ? '✓' : '⏳'}
+          </DomNode>
+        </DomLayer>
+      )}
+    </SceneProvider>
+  );
+}
+```
+
+**Svelte:**
+```svelte
+<script>
+  import { SceneProvider, DomLayer, DomNode } from 'corlena/svelte';
+  
+  function handleTap(nodeId) { console.log('Tapped:', nodeId); }
+  function handleDragStart(nodeId) { console.log('Drag start:', nodeId); }
+  function handleDragEnd(nodeId) { console.log('Drag end:', nodeId); }
+</script>
+
+<SceneProvider tapParams={[0.1, 2.0, 0.3, 0.05]} capacity={256} let:ready>
+  <DomLayer>
+    <DomNode 
+      id={1}
+      style={{ width: '140px', height: '90px', background: '#2a2a2a' }}
+      onTap={handleTap}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      Node 1 {ready ? '✓' : '⏳'}
+    </DomNode>
+  </DomLayer>
+</SceneProvider>
+```
+
 ### Optional WASM integration
 
 ```ts
@@ -121,11 +180,23 @@ Vite setup (SvelteKit)
 ```ts
 // apps/my-app/vite.config.ts
 import { sveltekit } from '@sveltejs/kit/vite';
+import { resolve } from 'path';
+
 export default {
   plugins: [sveltekit()],
+  resolve: {
+    alias: {
+      'corlena/svelte': resolve(__dirname, '../../packages/corlena/svelte/index.js')
+    }
+  },
   optimizeDeps: { exclude: ['corlena/wasm', '@corlena/wasm'] },
-  ssr: { noExternal: ['corlena', 'corlena/wasm', '@corlena/wasm'] },
-  assetsInclude: ['**/*.wasm']
+  ssr: { noExternal: ['corlena', 'corlena/wasm', 'corlena/svelte', '@corlena/wasm'] },
+  assetsInclude: ['**/*.wasm'],
+  server: {
+    fs: {
+      allow: ['..', '../../packages']
+    }
+  }
 };
 ```
 Notes: do not import JS from `/public` (e.g. `/wasm/...`) in source; to debug a public copy during dev you can set `window.__CORLENA_WASM_URL__` before initializing.
