@@ -101,3 +101,11 @@ export function setParticleParams(params) {
     mod.set_particle_params(data);
   }
 }
+
+export function setTapParams(params) {
+  // [tap_max_s, move_thresh_px, double_s, single_delay_s]
+  if (mod && typeof mod.set_tap_params === 'function') {
+    const data = params instanceof Float32Array ? params : new Float32Array(params || []);
+    mod.set_tap_params(data);
+  }
+}

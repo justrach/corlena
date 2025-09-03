@@ -22,6 +22,11 @@
 
       await wasm.init(8);
       wasm.setViewParams(1, 0, 0, (window as any).devicePixelRatio || 1);
+      // Configure tap detection thresholds (seconds, pixels)
+      // [tap_max_s, move_thresh_px, double_s, single_delay_s]
+      if (typeof wasm.setTapParams === 'function') {
+        wasm.setTapParams([0.28, 6, 0.28, 0.25]);
+      }
 
       // One node: [id, x, y, w, h, vx, vy, flags]
       wasm.upsertNodes(new Float32Array([1, 100, 100, 50, 50, 0, 0, 0]));
@@ -38,6 +43,28 @@
 
       // Transforms layout: [id, x, y, angle, scaleX, scaleY, reserved] * N
       add('transforms', Array.from(out.transforms));
+
+      // --- Single tap test ---
+      wasm.applyPointers(new Float32Array([1, 100, 100, 0.7, 1]));
+      out = wasm.processFrame({ dt: 0.016 });
+      wasm.applyPointers(new Float32Array([1, 100, 100, 0.0, 0]));
+      // Advance time enough for single tap to emit (single_delay_s ~0.25s)
+      out = wasm.processFrame({ dt: 0.30 });
+      add('events single tap (after delay)', Array.from(out.events));
+
+      // --- Double tap test ---
+      // First tap (schedule single, but we advance < single_delay to keep it pending)
+      wasm.applyPointers(new Float32Array([1, 100, 100, 0.7, 1]));
+      out = wasm.processFrame({ dt: 0.016 });
+      wasm.applyPointers(new Float32Array([1, 100, 100, 0.0, 0]));
+      out = wasm.processFrame({ dt: 0.05 });
+      add('events after first tap (pending single)', Array.from(out.events));
+      // Second tap within double window -> should emit double_tap immediately and cancel single
+      wasm.applyPointers(new Float32Array([1, 100, 100, 0.7, 1]));
+      out = wasm.processFrame({ dt: 0.016 });
+      wasm.applyPointers(new Float32Array([1, 100, 100, 0.0, 0]));
+      out = wasm.processFrame({ dt: 0.016 });
+      add('events double tap', Array.from(out.events));
     } catch (err) {
       console.error(err);
       add('error', String(err));

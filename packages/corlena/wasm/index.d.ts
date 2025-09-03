@@ -1,6 +1,14 @@
 export interface FrameOut {
   transforms: Float32Array;
   particles: Float32Array;
+  /**
+   * Events ring buffer with stride of 4 per event: [type, a, b, data]
+   * Types:
+   *  1 = drag_start (a=nodeId)
+   *  2 = drag_end   (a=nodeId)
+   * 10 = tap        (a=nodeId, b=1)
+   * 11 = double_tap (a=nodeId, b=2)
+   */
   events: Int32Array;
 }
 export function init(capacity?: number): Promise<void>;
@@ -19,3 +27,7 @@ export function resizeImageMode(id: number, outW: number, outH: number, mode: nu
 export function spawnParticles(data: Float32Array | number[]): number;
 export function clearParticles(): void;
 export function setParticleParams(params: Float32Array | number[]): void;
+/**
+ * Configure tap detection parameters: [tap_max_s, move_thresh_px, double_s, single_delay_s]
+ */
+export function setTapParams(params: Float32Array | number[]): void;

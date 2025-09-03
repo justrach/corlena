@@ -8,7 +8,12 @@ use std::collections::HashMap;
 // pointers: [id, x, y, pressure, buttons] * P  (pressure optional; if omitted, stride=4)
 // constraints: [left, top, right, bottom, gridX, gridY, inertia, damping]
 // transforms out: [id, x, y, angle, scaleX, scaleY, reserved] * N
-// events out (ring): [type, a, b, data] * E  (e.g., 1=drag_start, 2=drag_end)
+// events out (ring): [type, a, b, data] * E
+//   type codes:
+//     1 = drag_start (a=nodeId)
+//     2 = drag_end   (a=nodeId)
+//    10 = tap        (a=nodeId, b=1)
+//    11 = double_tap (a=nodeId, b=2)
 
 #[derive(Clone, Debug)]
 struct Node {
@@ -24,6 +29,14 @@ struct Node {
     grabbing: bool,
     grab_dx: f32,
     grab_dy: f32,
+    // Tap detection state
+    down_time: f32,
+    down_x: f32,
+    down_y: f32,
+    max_move: f32,
+    last_tap_time: f32,
+    single_pending: bool,
+    single_emit_time: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -70,6 +83,13 @@ struct Engine {
     restitution: f32,
     // events ring buffer (drain each frame)
     events: Vec<i32>,
+    // time accumulator (seconds)
+    time: f32,
+    // tap config (seconds, pixels)
+    tap_max_s: f32,
+    move_thresh_px: f32,
+    double_s: f32,
+    single_delay_s: f32,
 }
 
 impl Engine {
@@ -95,6 +115,12 @@ impl Engine {
         e.p_damping = 0.999; // per frame exp factor (applied with powf(dt))
         e.restitution = 0.6; // bounce factor
         e.events = Vec::new();
+        // time + tap defaults
+        e.time = 0.0;
+        e.tap_max_s = 0.28;       // max press duration for single tap
+        e.move_thresh_px = 6.0;   // max movement (in world px)
+        e.double_s = 0.28;        // max gap between taps for double
+        e.single_delay_s = 0.25;  // delay before emitting single, to allow double
         e
     }
 
@@ -110,6 +136,7 @@ impl Engine {
         self.images.clear();
         self.particles.clear();
         self.events.clear();
+        self.time = 0.0;
     }
 
     fn upsert_nodes(&mut self, data: &[f32]) {
@@ -127,6 +154,13 @@ impl Engine {
                 grabbing: false,
                 grab_dx: 0.0,
                 grab_dy: 0.0,
+                down_time: 0.0,
+                down_x: 0.0,
+                down_y: 0.0,
+                max_move: 0.0,
+                last_tap_time: -1000.0,
+                single_pending: false,
+                single_emit_time: 0.0,
             };
             if let Some(&idx) = self.index.get(&id) {
                 self.nodes[idx] = n;
@@ -160,9 +194,19 @@ impl Engine {
                         n.grabbing = true;
                         n.grab_dx = n.x - x;
                         n.grab_dy = n.y - y;
+                        // Tap start
+                        n.down_time = self.time;
+                        n.down_x = x;
+                        n.down_y = y;
+                        n.max_move = 0.0;
                         // Event: drag_start(nodeId)
                         self.events.extend_from_slice(&[1, id as i32, 0, 0]);
                     }
+                    // track movement since press
+                    let dx = x - n.down_x;
+                    let dy = y - n.down_y;
+                    let d = (dx*dx + dy*dy).sqrt();
+                    if d > n.max_move { n.max_move = d; }
                     n.x = x + n.grab_dx;
                     n.y = y + n.grab_dy;
                     n.vx = 0.0; n.vy = 0.0;
@@ -171,12 +215,31 @@ impl Engine {
                     n.grabbing = false;
                     // Event: drag_end(nodeId)
                     self.events.extend_from_slice(&[2, id as i32, 0, 0]);
+                    // Determine tap vs drag based on duration and move threshold
+                    let press_dur = (self.time - n.down_time).max(0.0);
+                    let is_tap = press_dur <= self.tap_max_s && n.max_move <= self.move_thresh_px;
+                    if is_tap {
+                        let since_last = self.time - n.last_tap_time;
+                        if since_last >= 0.0 && since_last <= self.double_s {
+                            // Double tap: cancel pending single if any
+                            if n.single_pending { n.single_pending = false; }
+                            self.events.extend_from_slice(&[11, id as i32, 2, 0]);
+                            n.last_tap_time = -1000.0;
+                        } else {
+                            // Schedule single tap after delay
+                            n.single_pending = true;
+                            n.single_emit_time = self.time + self.single_delay_s;
+                            n.last_tap_time = self.time;
+                        }
+                    }
                 }
             }
         }
     }
 
     fn step(&mut self, dt: f32) {
+        // advance time
+        self.time += dt.max(0.0);
         // Integrate velocities with optional inertia + damping
         let use_inertia = self.inertia > 0.0;
         let damp = if self.damping < 1.0 { self.damping.powf(dt.max(0.0)) } else { 1.0 };
@@ -200,6 +263,14 @@ impl Engine {
             let max_y = if self.bottom.is_finite() { (self.bottom - self.top - n.h).max(0.0) } else { f32::INFINITY };
             n.x = n.x.max(self.left).min(self.left + max_x);
             n.y = n.y.max(self.top).min(self.top + max_y);
+        }
+
+        // Emit any scheduled single taps now that enough time has elapsed
+        for n in &mut self.nodes {
+            if n.single_pending && self.time >= n.single_emit_time {
+                self.events.extend_from_slice(&[10, n.id as i32, 1, 0]);
+                n.single_pending = false;
+            }
         }
 
         // Particles integration
@@ -321,6 +392,23 @@ pub fn set_constraints(params: Float32Array) {
             }
             if copy_len >= 6 { eng.grid_x = buf[4].max(0.0); eng.grid_y = buf[5].max(0.0); }
             if copy_len >= 8 { eng.inertia = buf[6].max(0.0); eng.damping = buf[7].clamp(0.0, 1.0); }
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn set_tap_params(params: Float32Array) {
+    // [tap_max_s, move_thresh_px, double_s, single_delay_s]
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            let mut buf = [0f32; 4];
+            let len = params.length() as usize;
+            let copy_len = len.min(4);
+            for i in 0..copy_len { buf[i] = params.get_index(i as u32); }
+            if copy_len >= 1 { eng.tap_max_s = buf[0].max(0.0); }
+            if copy_len >= 2 { eng.move_thresh_px = buf[1].max(0.0); }
+            if copy_len >= 3 { eng.double_s = buf[2].max(0.0); }
+            if copy_len >= 4 { eng.single_delay_s = buf[3].max(0.0); }
         }
     });
 }

@@ -1,6 +1,6 @@
 {
   "name": "corlena",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
@@ -8,6 +8,7 @@
   "files": [
     "src",
     "react",
+    "svelte",
     "wasm"
   ],
   "scripts": {
@@ -26,6 +27,10 @@
     "./react": {
       "types": "./react/index.d.ts",
       "default": "./react/index.js"
+    },
+    "./svelte": {
+      "svelte": "./svelte/index.js",
+      "default": "./svelte/index.js"
     }
   },
   "dependencies": {},
