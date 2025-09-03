@@ -1,19 +1,32 @@
 // WASM boundary wrapper. Aligns with packages/wasm/src/lib.rs
-// Monolithic packaging: statically import wasm-bindgen bundle from local pkg.
-// Bundlers (Vite/Next/Turbopack) will include the .wasm asset automatically.
-
-// These imports are only used when init() is called; the default export triggers
-// instantiation when invoked. The static import ensures assets are discoverable.
-import wasmInit, * as wasmPkg from './pkg/corlena_wasm.js';
+// Dynamic loading with fallback: prefer the co-located pkg/ bundle, else
+// fall back to the published '@corlena/wasm' bundle so it works OOTB.
 
 let mod = null; // wasm module bindings (from wasm-pack pkg)
 let ready = false;
+let wasmInit = null;
+let wasmPkg = null;
 
 export async function init(capacity = 256) {
   try {
-    await wasmInit();
+    // Try local pkg first (synced by scripts/sync-wasm.mjs)
+    if (!wasmInit || !wasmPkg) {
+      try {
+        const m = await import('./pkg/corlena_wasm.js');
+        wasmPkg = m;
+        wasmInit = m.default;
+      } catch {
+        // Fallback to published package assets
+        const m = await import('@corlena/wasm/pkg/corlena_wasm.js');
+        wasmPkg = m;
+        wasmInit = m.default;
+      }
+    }
+    if (typeof wasmInit === 'function') {
+      await wasmInit();
+    }
     mod = wasmPkg;
-    if (typeof mod.init === 'function') mod.init(capacity >>> 0);
+    if (mod && typeof mod.init === 'function') mod.init(capacity >>> 0);
     ready = true;
   } catch (_) {
     ready = false;
