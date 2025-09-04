@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import {
     init as wasmInit,
@@ -8,6 +9,12 @@
     processFrame as wasmProcessFrame,
     spawnParticles as wasmSpawnParticles
   } from 'corlena/wasm';
+
+  // Dynamic component imports
+  let SceneProvider: any;
+  let DomLayer: any;
+  let DrawingCanvas: any;
+  let componentsLoaded = false;
 
   // Image layer model
   type ImgLayer = { id: number; img: HTMLImageElement; x: number; y: number; w: number; h: number };
@@ -36,6 +43,12 @@
   let texts: TextNode[] = [];
   // Feature: Wire particles toggle (off by default)
   let particlesEnabled = false;
+  
+  // Drawing state
+  let drawingEnabled = false;
+  let brushColor = '#ffffff';
+  let brushWidth = 3;
+  let drawPathCount = 0;
 
   // UI state
   let editingId: number | null = null;
@@ -190,6 +203,18 @@
   }
 
   onMount(() => {
+    // Load drawing components
+    if (browser) {
+      import('corlena/svelte').then((module) => {
+        SceneProvider = module.SceneProvider;
+        DomLayer = module.DomLayer;
+        DrawingCanvas = module.DrawingCanvas;
+        componentsLoaded = true;
+      }).catch((err) => {
+        console.warn('Failed to load drawing components:', err);
+      });
+    }
+
     if (!canvas) return;
     ctx = canvas.getContext('2d');
     const onResize = () => resize();
@@ -765,6 +790,18 @@
       <button on:click={() => adjustFont(+2)} title="Larger">A+</button>
       <input type="color" on:input={(e) => setColor((e.target as HTMLInputElement).value)} on:change={(e) => setColor((e.target as HTMLInputElement).value)} title="Text color" />
     </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <label style="display:flex;gap:6px;align-items:center">
+        <input type="checkbox" bind:checked={drawingEnabled} />
+        <span>Drawing</span>
+      </label>
+      {#if drawingEnabled}
+        <input type="color" bind:value={brushColor} style="width:28px;height:28px;padding:0;border-radius:50%;border:2px solid rgba(255,255,255,0.6)" />
+        <input type="range" bind:value={brushWidth} min="1" max="20" style="width:60px" />
+        <span style="font-size:12px">{brushWidth}px</span>
+        <button on:click={() => drawPathCount = 0} style="padding:4px 8px;font-size:12px">Clear Paths</button>
+      {/if}
+    </div>
     <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
       <label style="display:flex;gap:6px;align-items:center">
         <input type="checkbox" bind:checked={particlesEnabled} />
@@ -781,6 +818,35 @@
        on:drop={onDrop}
        role="region"
        aria-label="Canvas drop zone: drop images to add">
+    
+    {#if drawingEnabled && componentsLoaded && SceneProvider && DomLayer && DrawingCanvas}
+      <!-- Drawing mode with components -->
+      <svelte:component this={SceneProvider} capacity={1024} let:ready>
+        <svelte:component this={DomLayer}>
+          <svelte:component 
+            this={DrawingCanvas}
+            width={420}
+            height={747}
+            brushColor={brushColor}
+            brushWidth={brushWidth}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              zIndex: 10,
+            }}
+            onPathStart={(pathId: number) => {
+              console.log('Started drawing path:', pathId);
+            }}
+            onPathComplete={(pathId: number) => {
+              console.log('Completed drawing path:', pathId);
+              drawPathCount = drawPathCount + 1;
+            }}
+          />
+        </svelte:component>
+      </svelte:component>
+    {/if}
+    
     <canvas
       bind:this={canvas}
       on:pointerdown={onPointerDown}
