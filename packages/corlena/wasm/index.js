@@ -67,10 +67,15 @@ export function processFrame(input) {
   // Preferred: new API using internal state (dt only)
   if (mod && typeof mod.process_frame === 'function') {
     const out = mod.process_frame(Number(input?.dt ?? 0));
-    return { transforms: out.transforms, particles: out.particles || new Float32Array(0), events: out.events };
+    return { 
+      transforms: out.transforms, 
+      particles: out.particles || new Float32Array(0), 
+      drawPaths: out.drawPaths || new Float32Array(0),
+      events: out.events 
+    };
   }
   // Fallback noop
-  return { transforms: new Float32Array(0), particles: new Float32Array(0), events: new Int32Array(0) };
+  return { transforms: new Float32Array(0), particles: new Float32Array(0), drawPaths: new Float32Array(0), events: new Int32Array(0) };
 }
 
 export function isReady() {
@@ -121,4 +126,46 @@ export function setTapParams(params) {
     const data = params instanceof Float32Array ? params : new Float32Array(params || []);
     mod.set_tap_params(data);
   }
+}
+
+// Drawing APIs
+export function startDrawPath(id, x, y, pressure, color, width) {
+  if (mod && typeof mod.start_draw_path === 'function') {
+    return !!mod.start_draw_path(id|0, Number(x), Number(y), Number(pressure), color>>>0, Number(width));
+  }
+  return false;
+}
+
+export function addDrawPoint(id, x, y, pressure) {
+  if (mod && typeof mod.add_draw_point === 'function') {
+    return !!mod.add_draw_point(id|0, Number(x), Number(y), Number(pressure));
+  }
+  return false;
+}
+
+export function finishDrawPath(id, closed) {
+  if (mod && typeof mod.finish_draw_path === 'function') {
+    return !!mod.finish_draw_path(id|0, !!closed);
+  }
+  return false;
+}
+
+export function removeDrawPath(id) {
+  if (mod && typeof mod.remove_draw_path === 'function') {
+    return !!mod.remove_draw_path(id|0);
+  }
+  return false;
+}
+
+export function clearDrawPaths() {
+  if (mod && typeof mod.clear_draw_paths === 'function') {
+    mod.clear_draw_paths();
+  }
+}
+
+export function getDrawPathsCount() {
+  if (mod && typeof mod.get_draw_paths_count === 'function') {
+    return mod.get_draw_paths_count() >>> 0;
+  }
+  return 0;
 }

@@ -56,6 +56,15 @@ struct Particle {
     life: f32,
 }
 
+#[derive(Clone, Debug)]
+struct DrawPath {
+    id: i32,
+    points: Vec<f32>, // [x, y, pressure, timestamp] * N
+    color: u32,       // RGBA packed
+    width: f32,
+    closed: bool,
+}
+
 #[derive(Default)]
 struct Engine {
     nodes: Vec<Node>,
@@ -81,6 +90,8 @@ struct Engine {
     g_y: f32,
     p_damping: f32,
     restitution: f32,
+    // drawing paths
+    draw_paths: HashMap<i32, DrawPath>,
     // events ring buffer (drain each frame)
     events: Vec<i32>,
     // time accumulator (seconds)
@@ -110,6 +121,7 @@ impl Engine {
         e.damping = 1.0;
         e.images = HashMap::new();
         e.particles = Vec::new();
+        e.draw_paths = HashMap::new();
         e.g_x = 0.0; // gravity x
         e.g_y = 600.0; // gravity y (px/s^2)
         e.p_damping = 0.999; // per frame exp factor (applied with powf(dt))
@@ -135,6 +147,7 @@ impl Engine {
         self.inertia = 0.0; self.damping = 1.0;
         self.images.clear();
         self.particles.clear();
+        self.draw_paths.clear();
         self.events.clear();
         self.time = 0.0;
     }
@@ -336,6 +349,22 @@ impl Engine {
         arr.copy_from(&out[..]);
         arr
     }
+
+    fn write_draw_paths(&self) -> Float32Array {
+        // Format: [path_id, color, width, closed, point_count, x1, y1, pressure1, timestamp1, x2, y2, ...] per path
+        let mut out: Vec<f32> = Vec::new();
+        for path in self.draw_paths.values() {
+            out.push(path.id as f32);
+            out.push(path.color as f32);
+            out.push(path.width);
+            out.push(if path.closed { 1.0 } else { 0.0 });
+            out.push((path.points.len() / 4) as f32); // point count
+            out.extend_from_slice(&path.points);
+        }
+        let arr = Float32Array::new_with_length(out.len() as u32);
+        arr.copy_from(&out[..]);
+        arr
+    }
 }
 
 thread_local! {
@@ -437,14 +466,16 @@ pub fn apply_pointers(pointers: Float32Array) {
 
 #[wasm_bindgen]
 pub fn process_frame(dt: f32) -> JsValue {
-    let (transforms, particles, events) = ENGINE.with(|e| {
+    let (transforms, particles, draw_paths, events) = ENGINE.with(|e| {
         let mut transforms = Float32Array::new_with_length(0);
         let mut particles = Float32Array::new_with_length(0);
+        let mut draw_paths = Float32Array::new_with_length(0);
         let mut events = Int32Array::new_with_length(0);
         if let Some(ref mut eng) = *e.borrow_mut() {
             eng.step(dt);
             transforms = eng.write_transforms();
             particles = eng.write_particles();
+            draw_paths = eng.write_draw_paths();
             // Drain events ring buffer
             if !eng.events.is_empty() {
                 let len = eng.events.len() as u32;
@@ -455,12 +486,13 @@ pub fn process_frame(dt: f32) -> JsValue {
                 eng.events.clear();
             }
         }
-        (transforms, particles, events)
+        (transforms, particles, draw_paths, events)
     });
 
     let obj = Object::new();
     Reflect::set(&obj, &JsValue::from_str("transforms"), &transforms).ok();
     Reflect::set(&obj, &JsValue::from_str("particles"), &particles).ok();
+    Reflect::set(&obj, &JsValue::from_str("drawPaths"), &draw_paths).ok();
     Reflect::set(&obj, &JsValue::from_str("events"), &events).ok();
     JsValue::from(obj)
 }
@@ -564,6 +596,74 @@ pub fn resize_image(id: i32, out_w: u32, out_h: u32) -> Uint8Array {
         }
     });
     out
+}
+
+#[wasm_bindgen]
+pub fn start_draw_path(id: i32, x: f32, y: f32, pressure: f32, color: u32, width: f32) -> bool {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            let path = DrawPath {
+                id,
+                points: vec![x, y, pressure, eng.time],
+                color,
+                width,
+                closed: false,
+            };
+            eng.draw_paths.insert(id, path);
+            true
+        } else { false }
+    })
+}
+
+#[wasm_bindgen]
+pub fn add_draw_point(id: i32, x: f32, y: f32, pressure: f32) -> bool {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            if let Some(path) = eng.draw_paths.get_mut(&id) {
+                path.points.extend_from_slice(&[x, y, pressure, eng.time]);
+                true
+            } else { false }
+        } else { false }
+    })
+}
+
+#[wasm_bindgen]
+pub fn finish_draw_path(id: i32, closed: bool) -> bool {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            if let Some(path) = eng.draw_paths.get_mut(&id) {
+                path.closed = closed;
+                true
+            } else { false }
+        } else { false }
+    })
+}
+
+#[wasm_bindgen]
+pub fn remove_draw_path(id: i32) -> bool {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            eng.draw_paths.remove(&id).is_some()
+        } else { false }
+    })
+}
+
+#[wasm_bindgen]
+pub fn clear_draw_paths() {
+    ENGINE.with(|e| {
+        if let Some(ref mut eng) = *e.borrow_mut() {
+            eng.draw_paths.clear();
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn get_draw_paths_count() -> u32 {
+    ENGINE.with(|e| {
+        if let Some(ref eng) = *e.borrow() {
+            eng.draw_paths.len() as u32
+        } else { 0 }
+    })
 }
 
 // Pure helpers for testing image resizing logic without wasm-bindgen types.
