@@ -2,18 +2,136 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { useDraggable } from "corlena/react";
+import { useDraggable, SceneProvider, DomLayer, DomNode } from "corlena/react";
 import { Button } from "../../components/ui/button";
 
 function intersects(a: DOMRect, b: DOMRect) {
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
 }
 
+function ReactOverlayDemo({ onUsed }: { onUsed: () => void }) {
+  const [taps, setTaps] = useState(0);
+  const [dbls, setDbls] = useState(0);
+  const [last, setLast] = useState<string>("—");
+
+  const onTap = useCallback((id: number) => {
+    setTaps((n) => n + 1);
+    setLast(`tap on #${id}`);
+    onUsed();
+  }, [onUsed]);
+  const onDoubleTap = useCallback((id: number) => {
+    setDbls((n) => n + 1);
+    setLast(`double tap on #${id}`);
+    onUsed();
+  }, [onUsed]);
+
+  return (
+    <div className="rounded-lg border p-4 relative overflow-hidden" style={{ background: '#FFFDF7', borderColor: '#BFE2F5' }}>
+      <h2 className="font-semibold mb-2" style={{ color: '#0D1217' }}>React DOM Overlay (WASM)</h2>
+      <p className="text-sm mb-3" style={{ color: '#0D1217B3' }}>A shadcn button wrapped in a DomNode receives tap and double‑tap events from the WASM engine.</p>
+      <div className="relative h-[220px] rounded-md bg-white border" style={{ borderColor: '#BFE2F5' }}>
+        <SceneProvider tapParams={[0.28, 6, 0.28, 0.25]} capacity={32}>
+          <DomLayer>
+            <DomNode id={1} onTap={onTap} onDoubleTap={onDoubleTap}>
+              <Button className="shadow-sm" style={{ background: '#0D1217', color: '#FFFDF7' }}>Tap me</Button>
+            </DomNode>
+          </DomLayer>
+        </SceneProvider>
+      </div>
+      <div className="flex items-center gap-3 mt-3 text-xs" style={{ color: '#0D1217B3' }}>
+        <span>taps: <b className="ml-1" style={{ color: '#0D1217' }}>{taps}</b></span>
+        <span>double taps: <b className="ml-1" style={{ color: '#0D1217' }}>{dbls}</b></span>
+        <span className="ml-auto">last: <b className="ml-1" style={{ color: '#0D1217' }}>{last}</b></span>
+        <Button variant="outline" size="sm" className="shadow-sm" style={{ borderColor: '#BFE2F5', color: '#0D1217', background: '#FFFDF7' }} onClick={() => { setTaps(0); setDbls(0); setLast('—'); }}>Reset</Button>
+      </div>
+    </div>
+  );
+}
+
+function TapEventsWasm({ onUsed }: { onUsed: () => void }) {
+  const [log, setLog] = useState<string[]>([]);
+  const add = useCallback((label: string, data?: any) => {
+    setLog((prev) => {
+      try {
+        const suffix = data !== undefined ? ' ' + JSON.stringify(data) : '';
+        return [...prev, `${label}${suffix}`];
+      } catch {
+        return [...prev, `${label} <unserializable>`];
+      }
+    });
+  }, []);
+
+  const run = useCallback(async () => {
+    try {
+      const wasm = (await import('corlena/wasm')) as unknown as WasmApi;
+      await wasm.init?.(8);
+      wasm.setViewParams?.(1, 0, 0, (globalThis as any).devicePixelRatio || 1);
+      // Configure tap detection thresholds (seconds, pixels)
+      // [tap_max_s, move_thresh_px, double_s, single_delay_s]
+      wasm.setTapParams?.([0.28, 6, 0.28, 0.25]);
+
+      // One node: [id, x, y, w, h, vx, vy, flags]
+      wasm.upsertNodes?.(new Float32Array([1, 100, 100, 50, 50, 0, 0, 0]));
+
+      // Press/drag: [id, x, y, pressure, buttons]
+      wasm.applyPointers?.(new Float32Array([1, 120, 120, 0.7, 1]));
+      let out = wasm.processFrame?.({ dt: 0.016 });
+      add('events press/drag', Array.from(out?.events || []));
+
+      // Release
+      wasm.applyPointers?.(new Float32Array([1, 120, 120, 0.0, 0]));
+      out = wasm.processFrame?.({ dt: 0.016 });
+      add('events release', Array.from(out?.events || []));
+
+      // Transforms layout: [id, x, y, angle, scaleX, scaleY, reserved] * N
+      add('transforms', Array.from(out?.transforms || []));
+
+      // --- Single tap test ---
+      wasm.applyPointers?.(new Float32Array([1, 100, 100, 0.7, 1]));
+      out = wasm.processFrame?.({ dt: 0.016 });
+      wasm.applyPointers?.(new Float32Array([1, 100, 100, 0.0, 0]));
+      // Advance time enough for single tap to emit (single_delay_s ~0.25s)
+      out = wasm.processFrame?.({ dt: 0.30 });
+      add('events single tap (after delay)', Array.from(out?.events || []));
+
+      // --- Double tap test ---
+      // First tap (schedule single, but we advance < single_delay to keep it pending)
+      wasm.applyPointers?.(new Float32Array([1, 100, 100, 0.7, 1]));
+      out = wasm.processFrame?.({ dt: 0.016 });
+      wasm.applyPointers?.(new Float32Array([1, 100, 100, 0.0, 0]));
+      out = wasm.processFrame?.({ dt: 0.05 });
+      add('events after first tap (pending single)', Array.from(out?.events || []));
+      // Second tap within double window -> should emit double_tap immediately and cancel single
+      wasm.applyPointers?.(new Float32Array([1, 100, 100, 0.7, 1]));
+      out = wasm.processFrame?.({ dt: 0.016 });
+      wasm.applyPointers?.(new Float32Array([1, 100, 100, 0.0, 0]));
+      out = wasm.processFrame?.({ dt: 0.016 });
+      add('events double tap', Array.from(out?.events || []));
+
+      onUsed();
+    } catch (err) {
+      console.warn(err);
+      add('error', String(err));
+    }
+  }, [add, onUsed]);
+
+  return (
+    <div className="rounded-lg border p-4 relative overflow-hidden" style={{ background: '#FFFDF7', borderColor: '#BFE2F5' }}>
+      <h2 className="font-semibold mb-2" style={{ color: '#0D1217' }}>Tap Events (WASM)</h2>
+      <p className="text-sm mb-3" style={{ color: '#0D1217B3' }}>Runs synthetic pointer sequences and logs tap/double‑tap events from the WASM engine.</p>
+      <div className="flex items-center gap-2 mb-3">
+        <Button onClick={run} className="shadow-sm" style={{ background: '#0D1217', color: '#FFFDF7' }}>Run tap test</Button>
+      </div>
+      <pre className="text-xs rounded p-3 bg-[#0D1217] text-[#AEE6FF]" style={{ whiteSpace: 'pre-wrap' }}>{log.join('\n')}</pre>
+    </div>
+  );
+}
+
 // Narrow module surface we rely on from corlena/wasm
 type WasmApi = {
   init?: (capacity: number) => Promise<void> | void;
   isReady?: () => boolean;
-  processFrame?: (opts: { dt: number }) => { particles?: Float32Array; transforms?: Float32Array } | undefined;
+  processFrame?: (opts: { dt: number }) => { particles?: Float32Array; transforms?: Float32Array; events?: Int32Array } | undefined;
   spawnParticles?: (seed: number[] | Float32Array) => void;
   clearParticles?: () => void;
   setConstraints?: (vals: Float32Array) => void;
@@ -21,6 +139,10 @@ type WasmApi = {
   setParticleParams?: (vals: Float32Array) => void;
   storeImage?: (id: number, data: Uint8Array, w: number, h: number) => boolean;
   resizeImageMode?: (id: number, w: number, h: number, mode: number) => Uint8Array | undefined;
+  // Tap-related (optional depending on installed package version)
+  setTapParams?: (vals: number[] | Float32Array) => void;
+  upsertNodes?: (vals: Float32Array) => void;
+  applyPointers?: (vals: Float32Array) => void;
 };
 
 function ParticleCompare({ onUsed }: { onUsed: () => void }) {
@@ -431,6 +553,14 @@ export default function PlaygroundPage() {
 
         <section>
           <ParticleCompare onUsed={() => setWasmUsed(true)} />
+        </section>
+
+        <section>
+          <ReactOverlayDemo onUsed={() => setWasmUsed(true)} />
+        </section>
+
+        <section>
+          <TapEventsWasm onUsed={() => setWasmUsed(true)} />
         </section>
       </main>
     </div>

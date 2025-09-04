@@ -11,6 +11,7 @@ import {
   spawnParticles as wasmSpawnParticles,
   clearParticles as wasmClearParticles,
 } from "corlena/wasm";
+import { SceneProvider, DomLayer, DrawingCanvas } from "corlena/react";
 
 // Image layer model
 type ImgLayer = { id: number; img: HTMLImageElement; x: number; y: number; w: number; h: number };
@@ -25,6 +26,14 @@ interface TextNode {
   fontWeight: number | string;
   color: string;
   align: CanvasTextAlign;
+}
+// Drawing path model
+interface DrawPath {
+  id: number;
+  points: { x: number; y: number; pressure: number }[];
+  color: string;
+  width: number;
+  completed: boolean;
 }
 
 type Pointer = { x: number; y: number };
@@ -57,6 +66,7 @@ export default function IGPage() {
   // Local state
   const [imgs, setImgs] = useState<ImgLayer[]>([]);
   const [texts, setTexts] = useState<TextNode[]>([]);
+  const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState<string>("");
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -67,6 +77,19 @@ export default function IGPage() {
   const [hudInteracting, setHudInteracting] = useState(false);
   // Debug UI state
   const [pCount, setPCount] = useState(0);
+  // Drawing state
+  const [drawingEnabled, setDrawingEnabled] = useState(false);
+  const [brushColor, setBrushColor] = useState('#ffffff');
+  const [brushWidth, setBrushWidth] = useState(3);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentDrawPath, setCurrentDrawPath] = useState<number | null>(null);
+  const [drawPathCount, setDrawPathCount] = useState(0);
+  // Refs to avoid stale closures
+  const drawingEnabledRef = useRef(false);
+  const brushColorRef = useRef('#ffffff');
+  const brushWidthRef = useRef(3);
+  const isDrawingRef = useRef(false);
+  const currentDrawPathRef = useRef<number | null>(null);
 
   // Pinch state
   const pinchState = useRef({
@@ -255,6 +278,40 @@ export default function IGPage() {
       }
       ctx.restore();
     }
+    // Drawing paths - render AFTER particles but BEFORE text
+    if (drawPaths.length > 0) {
+      console.log('Rendering', drawPaths.length, 'draw paths');
+    }
+    ctx.save();
+    for (const path of drawPaths) {
+      if (path.points.length < 1) continue;
+      console.log('Drawing path with', path.points.length, 'points, color:', path.color, 'width:', path.width);
+      ctx.strokeStyle = path.color;
+      ctx.fillStyle = path.color;
+      ctx.lineWidth = path.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.globalCompositeOperation = 'source-over';
+      
+      if (path.points.length === 1) {
+        // Single point - draw a dot
+        ctx.beginPath();
+        ctx.arc(path.points[0].x, path.points[0].y, path.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        console.log('Drew dot at', path.points[0].x, path.points[0].y);
+      } else {
+        // Multiple points - draw path
+        ctx.beginPath();
+        ctx.moveTo(path.points[0].x, path.points[0].y);
+        for (let i = 1; i < path.points.length; i++) {
+          ctx.lineTo(path.points[i].x, path.points[i].y);
+        }
+        ctx.stroke();
+        console.log('Drew path from', path.points[0].x, path.points[0].y, 'to', path.points[path.points.length-1].x, path.points[path.points.length-1].y);
+      }
+    }
+    ctx.restore();
+    
     // Texts
     for (const T of texts) {
       ctx.font = `${T.fontWeight} ${T.fontSize}px ${T.fontFamily}`;
@@ -284,10 +341,10 @@ export default function IGPage() {
       }
     }
     // Debug overlay removed
-  }, [imgs, texts, editingId, editingValue, draggingId, particlesEnabled]);
+  }, [imgs, texts, drawPaths, editingId, editingValue, draggingId, particlesEnabled]);
 
   // Compose once on content change for immediate feedback
-  useEffect(() => { compose(); }, [compose, imgs, texts]);
+  useEffect(() => { compose(); }, [compose, imgs, texts, drawPaths]);
 
   const loop = useCallback(() => {
     const now = performance.now();
@@ -493,6 +550,9 @@ export default function IGPage() {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
     if (!canvas || !ctx) return;
+    
+    console.log('PointerDown - drawingEnabled:', drawingEnabledRef.current);
+    
     if (editingId != null) stopEdit(true);
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -504,6 +564,33 @@ export default function IGPage() {
     draggingTypeRef.current = null;
     setDraggingId(null);
     setDraggingType(null);
+
+    // Handle drawing mode
+    if (drawingEnabledRef.current) {
+      const pathId = nextIdRef.current++;
+      const pressure = (e as any).pressure || 0.5;
+      const newPath: DrawPath = {
+        id: pathId,
+        points: [{ x, y, pressure }],
+        color: brushColorRef.current,
+        width: brushWidthRef.current,
+        completed: false
+      };
+      setDrawPaths(prev => {
+        const updated = [...prev, newPath];
+        console.log('Starting new draw path:', pathId, 'at', x, y, 'color:', brushColor, 'width:', brushWidth);
+        // Force immediate re-render
+        queueMicrotask(() => compose());
+        return updated;
+      });
+      setCurrentDrawPath(pathId);
+      setIsDrawing(true);
+      currentDrawPathRef.current = pathId;
+      isDrawingRef.current = true;
+      e.preventDefault();
+      try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch {}
+      return;
+    }
 
     // Track pointer for pinch
     pointersRef.current.set(e.pointerId, { x, y });
@@ -641,6 +728,24 @@ export default function IGPage() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    // Handle drawing mode
+    if (drawingEnabledRef.current && isDrawingRef.current && currentDrawPathRef.current !== null) {
+      console.log('PointerMove - adding point to path', currentDrawPathRef.current, 'at', x, y);
+      const pressure = (e as any).pressure || 0.5;
+      setDrawPaths(prev => {
+        const updated = prev.map(path => 
+          path.id === currentDrawPathRef.current 
+            ? { ...path, points: [...path.points, { x, y, pressure }] }
+            : path
+        );
+        // Force immediate re-render
+        queueMicrotask(() => compose());
+        return updated;
+      });
+      e.preventDefault();
+      return;
+    }
+
     // Update tracked pointer
     if (pointersRef.current.has(e.pointerId)) {
       pointersRef.current.set(e.pointerId, { x, y });
@@ -702,6 +807,22 @@ export default function IGPage() {
     const rect = canvas?.getBoundingClientRect();
     const px = rect ? e.clientX - rect.left : 0;
     const py = rect ? e.clientY - rect.top : 0;
+
+    // Handle drawing mode
+    if (drawingEnabledRef.current && isDrawingRef.current && currentDrawPathRef.current !== null) {
+      setDrawPaths(prev => prev.map(path => 
+        path.id === currentDrawPathRef.current 
+          ? { ...path, completed: true }
+          : path
+      ));
+      setCurrentDrawPath(null);
+      setIsDrawing(false);
+      currentDrawPathRef.current = null;
+      isDrawingRef.current = false;
+      setDrawPathCount(prev => prev + 1);
+      try { (e.target as Element).releasePointerCapture?.(e.pointerId); } catch {}
+      return;
+    }
 
     // Remove from tracked pointers
     pointersRef.current.delete(e.pointerId);
@@ -909,6 +1030,49 @@ export default function IGPage() {
                 title="Text color"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <label className="inline-flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  checked={drawingEnabled} 
+                  onChange={(e) => {
+                    console.log('Drawing checkbox changed to:', e.target.checked);
+                    setDrawingEnabled(e.target.checked);
+                    drawingEnabledRef.current = e.target.checked;
+                  }} 
+                />
+                <span>Drawing</span>
+              </label>
+              {drawingEnabled && (
+                <>
+                  <input
+                    type="color"
+                    value={brushColor}
+                    onChange={(e) => {
+                      setBrushColor(e.target.value);
+                      brushColorRef.current = e.target.value;
+                    }}
+                    title="Brush color"
+                    style={{ width: 24, height: 24 }}
+                  />
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={brushWidth}
+                    onChange={(e) => {
+                      setBrushWidth(Number(e.target.value));
+                      brushWidthRef.current = Number(e.target.value);
+                    }}
+                    title="Brush width"
+                    style={{ width: 60 }}
+                  />
+                  <span className="text-xs">{brushWidth}px</span>
+                  <Button variant="outline" onClick={() => setDrawPaths([])} size="sm">Clear Paths</Button>
+                  <span className="text-xs">({drawPaths.length})</span>
+                </>
+              )}
+            </div>
             <div className="flex items-center gap-2 ml-auto">
               <label className="inline-flex items-center gap-2">
                 <input type="checkbox" checked={particlesEnabled} onChange={(e) => setParticlesEnabled(e.target.checked)} />
@@ -946,6 +1110,37 @@ export default function IGPage() {
             className="relative w-full max-w-[420px] rounded-lg overflow-hidden border"
             style={{ aspectRatio: '9 / 16', borderColor: '#BFE2F5', background: '#000', overscrollBehavior: 'contain', overscrollBehaviorY: 'contain' }}
           >
+            {drawingEnabled && (
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }}>
+                <SceneProvider capacity={1024}>
+                  {({ ready }) => (
+                    <DomLayer>
+                      <DrawingCanvas
+                        width={420}
+                        height={747}
+                        brushColor={brushColor}
+                        brushWidth={brushWidth}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                        }}
+                        onPathStart={(pathId: number) => {
+                          console.log('React DrawingCanvas - Started path:', pathId);
+                        }}
+                        onPathComplete={(pathId: number) => {
+                          console.log('React DrawingCanvas - Completed path:', pathId);
+                          setDrawPathCount(prev => prev + 1);
+                        }}
+                      />
+                    </DomLayer>
+                  )}
+                </SceneProvider>
+              </div>
+            )}
+            
             <canvas
               ref={canvasRef}
               onPointerDown={onPointerDown}
