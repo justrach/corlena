@@ -36,16 +36,18 @@ Who is this for? Frontend engineers building canvas‑heavy UIs who want reliabl
 
 Imports
 - JS APIs: `import * as corlena from 'corlena'`
-- React scene overlay: `import { SceneProvider, DomLayer, DomNode } from 'corlena/react'`
-- Svelte scene overlay: `import { SceneProvider, DomLayer, DomNode } from 'corlena/svelte'`
+- React scene overlay: `import { SceneProvider, DomLayer, DomNode, DrawingCanvas } from 'corlena/react'`
+- Svelte scene overlay: `import { SceneProvider, DomLayer, DomNode, DrawingCanvas } from 'corlena/svelte'`
 - WASM boundary: `import { init, isReady, ... } from 'corlena/wasm'` (internally loads from `@corlena/wasm`)
 
 ## Apps / Examples
 - `apps/my-app`: SvelteKit example app.
-  - Route `/ig`: Instagram-style 9:16 canvas example demonstrating image upload, text overlay, live inline editing, drag, and pinch/wheel scaling. This is an example of how to use the primitives, not the library itself.
+  - Route `/ig`: Instagram-style 9:16 canvas example with integrated drawing mode, image upload, text overlay, live inline editing, drag, and pinch/wheel scaling.
   - Route `/scene`: Interactive scene overlay with draggable nodes using WASM physics integration.
 - `apps/nextjs-app`: Next.js example app.
-  - Route `/scene`: React scene overlay demo with identical dragging functionality.
+  - Route `/ig`: Full-featured IG Composer with drawing integration, text editing, image manipulation, and particle effects.
+  - Route `/drawing`: Standalone React drawing canvas demo with pressure-sensitive input and efficient path management.
+  - Route `/scene`: React scene overlay demo with draggable node functionality.
 
 ## Quick Start
 1) Install deps
@@ -162,6 +164,66 @@ function MyScene() {
     >
       Node 1 {ready ? '✓' : '⏳'}
     </DomNode>
+  </DomLayer>
+</SceneProvider>
+```
+
+### Drawing Canvas (React & Svelte)
+
+High-performance drawing with WASM-based path storage:
+
+**React:**
+```tsx
+import { SceneProvider, DomLayer, DrawingCanvas } from 'corlena/react';
+
+function MyDrawingApp() {
+  const [brushColor, setBrushColor] = useState('#2563eb');
+  const [brushWidth, setBrushWidth] = useState(3);
+
+  return (
+    <SceneProvider capacity={1024}>
+      {({ ready }) => (
+        <DomLayer>
+          <DrawingCanvas
+            width={800}
+            height={600}
+            brushColor={brushColor}
+            brushWidth={brushWidth}
+            onPathStart={(pathId) => console.log('Started:', pathId)}
+            onPathComplete={(pathId) => console.log('Completed:', pathId)}
+          />
+        </DomLayer>
+      )}
+    </SceneProvider>
+  );
+}
+```
+
+**Svelte:**
+```svelte
+<script lang="ts">
+  import { SceneProvider, DomLayer, DrawingCanvas } from 'corlena/svelte';
+  
+  let brushColor = '#2563eb';
+  let brushWidth = 3;
+  let canvasRef: any;
+  
+  function clearDrawing() {
+    canvasRef?.clearPaths();
+  }
+</script>
+
+<SceneProvider capacity={1024} let:ready>
+  <DomLayer>
+    <DrawingCanvas
+      bind:this={canvasRef}
+      width={800}
+      height={600}
+      {brushColor}
+      {brushWidth}
+      onPathStart={(pathId) => console.log('Started:', pathId)}
+      onPathComplete={(pathId) => console.log('Completed:', pathId)}
+    />
   </DomLayer>
 </SceneProvider>
 ```
