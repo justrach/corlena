@@ -49,3 +49,52 @@ export function Resizable(props: {
   style?: React.CSSProperties;
   className?: string;
 }): React.JSX.Element;
+
+// Overlay types
+export type Transform = { x: number; y: number; angle: number; sx: number; sy: number };
+export type DomNodeHandlers = {
+  onTap?: (id: number) => void;
+  onDoubleTap?: (id: number) => void;
+  onDragStart?: (id: number) => void;
+  onDragEnd?: (id: number) => void;
+};
+export type SceneContextValue = {
+  ready: boolean;
+  upsertNode: (node: { id: number; x?: number; y?: number; w?: number; h?: number; vx?: number; vy?: number; flags?: number }) => void;
+  registerHandlers: (id: number, handlers?: DomNodeHandlers) => void | (() => void);
+  applyPointer: (id: number, x: number, y: number, buttons: number) => void;
+  getTransform: (id: number) => Transform | null;
+  layerRef: React.RefObject<HTMLDivElement>;
+  toLocal: (clientX: number, clientY: number) => { x: number; y: number };
+};
+
+export function useScene(): SceneContextValue;
+export function SceneProvider(props: {
+  children?: React.ReactNode | ((context: { ready: boolean }) => React.ReactNode);
+  tapParams?: Float32Array | number[];
+  capacity?: number;
+}): React.JSX.Element;
+
+export function DomLayer(props: {
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  className?: string;
+}): React.JSX.Element;
+
+export function DomNode(props: {
+  id: number;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  className?: string;
+} & DomNodeHandlers): React.JSX.Element;
+
+export function DrawingCanvas(props: {
+  width?: number;
+  height?: number;
+  brushColor?: string;
+  brushWidth?: number;
+  onPathComplete?: (pathId: number) => void;
+  onPathStart?: (pathId: number) => void;
+  style?: React.CSSProperties;
+  className?: string;
+}): React.JSX.Element;

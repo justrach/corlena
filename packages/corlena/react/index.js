@@ -103,3 +103,7 @@ export function Resizable({ children, style, className, initial, onResize }) {
     </div>
   );
 }
+
+// Overlay exports
+export { SceneProvider, DomLayer, DomNode, useScene } from './scene.js';
+export { DrawingCanvas } from './DrawingCanvas.js';
