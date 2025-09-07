@@ -18,7 +18,7 @@ export interface Layer {
   locked: boolean
   opacity: number
   zIndex: number
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 }
 
 export interface CanvasState {

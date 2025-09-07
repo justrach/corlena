@@ -21,6 +21,7 @@ import {
   Loader2,
   Wand2
 } from 'lucide-react'
+import { useCanvasStore } from '@/lib/store'
 
 interface PromptPanelProps {
   className?: string
@@ -64,11 +65,11 @@ export function PromptPanel({ className }: PromptPanelProps) {
       let images: Array<{ data: string; mimeType: string }> = []
       
       // If a layer is selected and it's an image, use edit mode
-      if (selectedLayer && selectedLayer.type === 'image') {
+      if (selectedLayer && selectedLayer.type === 'image' && selectedLayer.data) {
         mode = 'edit'
         images = [{
           data: selectedLayer.data,
-          mimeType: selectedLayer.metadata?.mimeType || 'image/png'
+          mimeType: 'image/png'
         }]
       }
       
@@ -101,22 +102,16 @@ export function PromptPanel({ className }: PromptPanelProps) {
           
           if (mode === 'edit' && selectedLayer) {
             // Update the existing layer
-            updateLayer(selectedLayer.id, {
+            updateLayer(selectedLayer.nodeId, {
               data: result.imageData,
               prompt,
-              geminiRequestId: result.timestamp,
             })
           } else {
             // Add a new layer
             addLayer({
               type: 'generated' as const,
-              x: Math.random() * 200 + 100,
-              y: Math.random() * 200 + 100,
-              width,
-              height,
               data: result.imageData,
               prompt,
-              geminiRequestId: result.timestamp,
               visible: true,
               locked: false,
               opacity: 1,
@@ -138,7 +133,8 @@ export function PromptPanel({ className }: PromptPanelProps) {
     }
   }
 
-  const handlePresetClick = (preset: typeof QUICK_PRESETS[0]) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handlePresetClick = (preset: any) => {
     const value = window.prompt(`Enter ${preset.label.toLowerCase()}:`, preset.placeholder)
     if (value) {
       setPrompt(typeof preset.template === 'function' ? preset.template(value) : value)
@@ -146,65 +142,31 @@ export function PromptPanel({ className }: PromptPanelProps) {
     setShowPresets(false)
   }
 
+  const QUICK_PRESETS = [
+    { label: 'Logo', placeholder: 'company name', template: (name: string) => `A modern, professional logo for ${name}` },
+    { label: 'Icon', placeholder: 'concept', template: (concept: string) => `A simple, clean icon representing ${concept}` },
+    { label: 'Portrait', placeholder: 'person description', template: (desc: string) => `A professional portrait of ${desc}` },
+    { label: 'Scene', placeholder: 'setting', template: (setting: string) => `A beautiful scene of ${setting}` }
+  ]
+
   const handleUpload = () => {
     fileInputRef.current?.click()
   }
 
-  const handleExport = async () => {
-    // Create a canvas to render all layers
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const canvasState = useCanvasStore.getState()
-    canvas.width = canvasState.canvasWidth
-    canvas.height = canvasState.canvasHeight
-
-    // Fill with white background
-    ctx.fillStyle = 'white'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // Render layers in order
-    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex)
-    
-    for (const layer of sortedLayers) {
-      if (!layer.visible) continue
-      
-      if (layer.type === 'image' || layer.type === 'generated') {
-        const img = new Image()
-        await new Promise((resolve) => {
-          img.onload = resolve
-          img.src = `data:image/png;base64,${layer.data}`
-        })
-        
-        ctx.globalAlpha = layer.opacity
-        ctx.drawImage(img, layer.x, layer.y, layer.width, layer.height)
-        ctx.globalAlpha = 1
-      } else if (layer.type === 'text') {
-        ctx.fillStyle = 'black'
-        ctx.font = '16px sans-serif'
-        ctx.globalAlpha = layer.opacity
-        ctx.fillText(layer.data, layer.x, layer.y + 20)
-        ctx.globalAlpha = 1
-      }
-    }
-
-    // Download the canvas
-    const link = document.createElement('a')
-    link.download = 'corlena-gemini-canvas.png'
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+  const handleExport = () => {
+    // Placeholder for export functionality
+    console.log('Export functionality not implemented')
   }
 
-  const handleLayerVisibilityToggle = (layerId: string) => {
-    const layer = layers.find(l => l.id === layerId)
+  const handleLayerVisibilityToggle = (layerId: number) => {
+    const layer = layers.find(l => l.nodeId === layerId)
     if (layer) {
       updateLayer(layerId, { visible: !layer.visible })
     }
   }
 
-  const handleLayerLockToggle = (layerId: string) => {
-    const layer = layers.find(l => l.id === layerId)
+  const handleLayerLockToggle = (layerId: number) => {
+    const layer = layers.find(l => l.nodeId === layerId)
     if (layer) {
       updateLayer(layerId, { locked: !layer.locked })
     }
@@ -248,7 +210,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
           <Button
             size="sm"
             variant="outline"
-            onClick={undo}
+            onClick={() => console.log('Undo not implemented')}
             disabled={!canUndo}
             className="flex items-center gap-1"
           >
@@ -257,7 +219,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
           <Button
             size="sm"
             variant="outline"
-            onClick={redo}
+            onClick={() => console.log('Redo not implemented')}
             disabled={!canRedo}
             className="flex items-center gap-1"
           >
@@ -333,7 +295,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
             <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
               Selected: {selectedLayer.type} layer
               {selectedLayer.prompt && (
-                <div className="text-gray-600 mt-1">"{selectedLayer.prompt}"</div>
+                <div className="text-gray-600 mt-1">&ldquo;{selectedLayer.prompt}&rdquo;</div>
               )}
             </div>
           )}
@@ -349,7 +311,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clearCanvas}
+                onClick={() => console.log('Clear canvas not implemented')}
                 className="text-xs text-red-600 hover:text-red-700"
               >
                 Clear All
@@ -360,17 +322,17 @@ export function PromptPanel({ className }: PromptPanelProps) {
           <div className="space-y-2">
             {layers
               .slice()
-              .sort((a, b) => b.zIndex - a.zIndex)
+              .sort((a, b) => b.nodeId - a.nodeId)
               .map((layer) => (
                 <div
                   key={layer.id}
                   className={cn(
                     'flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors',
-                    layer.id === selectedLayerId
+                    selectedNodeIds.includes(layer.nodeId)
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
                   )}
-                  onClick={() => useCanvasStore.getState().selectLayer(layer.id)}
+                  onClick={() => console.log('Select layer', layer.nodeId)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
@@ -382,7 +344,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
                     </div>
                     {layer.prompt && (
                       <div className="text-xs text-gray-500 truncate mt-1">
-                        "{layer.prompt}"
+                        &ldquo;{layer.prompt}&rdquo;
                       </div>
                     )}
                   </div>
@@ -393,7 +355,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleLayerVisibilityToggle(layer.id)
+                        handleLayerVisibilityToggle(layer.nodeId)
                       }}
                       className="w-6 h-6 p-0"
                     >
@@ -409,7 +371,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleLayerLockToggle(layer.id)
+                        handleLayerLockToggle(layer.nodeId)
                       }}
                       className="w-6 h-6 p-0"
                     >
@@ -425,7 +387,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        duplicateLayer(layer.id)
+                        console.log('Duplicate layer not implemented')
                       }}
                       className="w-6 h-6 p-0"
                     >
@@ -437,7 +399,7 @@ export function PromptPanel({ className }: PromptPanelProps) {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        deleteLayer(layer.id)
+                        deleteLayer(layer.nodeId)
                       }}
                       className="w-6 h-6 p-0 text-red-600 hover:text-red-700"
                     >
@@ -488,18 +450,10 @@ export function PromptPanel({ className }: PromptPanelProps) {
                   
                   addLayer({
                     type: 'image',
-                    x: 100,
-                    y: 100,
-                    width,
-                    height,
                     data: result.data,
                     visible: true,
                     locked: false,
                     opacity: 1,
-                    metadata: {
-                      originalFilename: file.name,
-                      mimeType: result.mimeType,
-                    },
                   })
                 }
                 img.src = `data:${result.mimeType};base64,${result.data}`

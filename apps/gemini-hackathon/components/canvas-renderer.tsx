@@ -239,8 +239,8 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
         if (img && img.complete) {
           const maxW = 300, maxH = 200
           const imgAspect = img.width / img.height
-          let w = imgAspect > maxW / maxH ? maxW : maxH * imgAspect
-          let h = imgAspect > maxW / maxH ? maxW / imgAspect : maxH
+          const w = imgAspect > maxW / maxH ? maxW : maxH * imgAspect
+          const h = imgAspect > maxW / maxH ? maxW / imgAspect : maxH
           
           // Set default transform if not exists
           const current = interactions.getLayerTransform(layer.nodeId)
