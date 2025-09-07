@@ -16,11 +16,17 @@
 
 Corlena is a developer‑first canvas toolkit for building responsive, high‑performance editors and interactive media UIs. It ships Svelte‑native actions and stores for interaction (drag, resize, pinch, gesture state) plus an optional Rust/WebAssembly core for heavy lifting — all tuned to run smoothly on iOS Safari and low‑power devices.
 
-Use it to build IG‑style composers, whiteboards, image/video overlays, particle scenes, or any canvas app that needs great touch ergonomics and predictable performance.
+**New in v1.3.0**: Complete AI-powered image editing application with Gemini integration, infinite canvas with pan/zoom, professional-grade interaction system, and Figma-inspired UI design.
+
+Use it to build IG‑style composers, whiteboards, image/video overlays, particle scenes, AI-powered design tools, or any canvas app that needs great touch ergonomics and predictable performance.
 
 See `summary.md` for a concise architecture overview.
 
 ## Highlights
+- **AI Integration**: Complete Gemini AI-powered image generation and editing workflow
+- **Infinite Canvas**: Professional pan/zoom system with world coordinates (0.1x to 10x zoom)
+- **Advanced Interactions**: All 8 resize handles, smooth drag from any position, tolerance-based detection
+- **Professional UI**: Clean, Figma-inspired interface with modern design patterns
 - Fast interactions: predictable 60–120 fps with typed‑array data paths and minimal allocations
 - iOS‑ready by default: correct `touch-action`, passive listeners, scroll lock, pinch/gesture handling, wheel normalization
 - Svelte‑first ergonomics: drop‑in actions (`draggable`, `resizable`, `droppable`) and a composable gesture store
@@ -48,6 +54,12 @@ Imports
   - Route `/ig`: Full-featured IG Composer with drawing integration, text editing, image manipulation, and particle effects.
   - Route `/drawing`: Standalone React drawing canvas demo with pressure-sensitive input and efficient path management.
   - Route `/scene`: React scene overlay demo with draggable node functionality.
+- **`apps/gemini-hackathon`**: **NEW** - Complete AI-powered image editing application
+  - Gemini AI integration for image generation
+  - Infinite canvas with professional pan/zoom
+  - Advanced drag/resize system with all 8 handles
+  - Clean, Figma-inspired UI design
+  - Individual and full canvas export functionality
 
 ## Quick Start
 1) Install deps
@@ -65,9 +77,16 @@ Imports
 3) Run example app
    
    ```sh
-   # Run the example SvelteKit app
+   # Run the SvelteKit example app
    npm run -w my-app dev
    # then open http://localhost:5173/ig
+   
+   # Or run the new AI-powered Gemini app (requires GEMINI_API_KEY)
+   cd apps/gemini-hackathon
+   cp env.example .env.local
+   # Add your GEMINI_API_KEY to .env.local
+   npm run dev
+   # then open http://localhost:3000
    ```
 
 ## Install
