@@ -33,7 +33,9 @@
       "default": "./svelte/index.js"
     }
   },
-  "dependencies": {},
+  "dependencies": {
+    "@corlena/wasm": "^0.0.3"
+  },
   "peerDependencies": {
     "svelte": "^4 || ^5",
     "react": "^18 || ^19"
