@@ -8,11 +8,12 @@
       "name": "gemini-hackathon",
       "version": "0.1.0",
       "dependencies": {
+        "@corlena/wasm": "^0.0.3",
         "@google/generative-ai": "^0.24.1",
         "@radix-ui/react-slot": "^1.2.3",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
-        "corlena": "^1.2.1",
+        "corlena": "^1.3.0",
         "lucide-react": "^0.542.0",
         "next": "15.5.2",
         "react": "19.1.0",
@@ -1158,6 +1159,8 @@
     "eslint-plugin-react/resolve": ["resolve@2.0.0-next.5", "", { "dependencies": { "is-core-module": "^2.13.0", "path-parse": "^1.0.7", "supports-preserve-symlinks-flag": "^1.0.0" }, "bin": { "resolve": "bin/resolve" } }, "sha512-U7WjGVG9sH8tvjW5SmGbQuui75FiyjAX72HX15DwBBwF9dNiQZRQAg9nnPhYy+TUnE0+VcrttuvNI8oSxZcocA=="],
 
     "fast-glob/glob-parent": ["glob-parent@5.1.2", "", { "dependencies": { "is-glob": "^4.0.1" } }, "sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow=="],
+
+    "gemini-hackathon/@corlena/wasm": ["@corlena/wasm@0.0.3", "", {}, "sha512-wukpTCdQmk2GWEPyha+yGvAkCp3SSmQpQFDIANLQ/92BKkgOLucpgmWTkt+/wnz36ObqDWwpeYV+PnC1+vq/vA=="],
 
     "is-bun-module/semver": ["semver@7.7.2", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-RF0Fw+rO5AMf9MAyaRXI4AV0Ulj5lMHqVxxdSgiVbixSCXoEmmX/jk0CuJw4+3SqroYO9VoUh+HcuJivvtJemA=="],
 
