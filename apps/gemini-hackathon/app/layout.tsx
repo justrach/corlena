@@ -42,12 +42,28 @@ export const metadata: Metadata = {
     title: "Corlena AI Canvas — Professional Image Editing with Gemini + WASM",
     description:
       "Professional, Figma‑inspired canvas editor with Gemini AI and a Rust/WASM engine for smooth, precise editing on an infinite canvas.",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Corlena AI Canvas — Gemini + WASM",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Corlena AI Canvas — Gemini + WASM",
     description:
       "AI‑assisted, Figma‑grade web canvas. Generate with Gemini and edit as real layers on a WASM‑accelerated engine.",
+    images: [
+      {
+        url: "/twitter-image",
+        width: 1200,
+        height: 630,
+        alt: "Corlena AI Canvas — Gemini + WASM",
+      },
+    ],
   },
   robots: {
     index: true,
