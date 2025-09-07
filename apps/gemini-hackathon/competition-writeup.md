@@ -15,7 +15,7 @@ What this is going to be:
 - A well‑documented, open‑source base teams can extend and ship.
 
 ## Competition Submission Details
-
+<!--  -->
 - Title: Corlena AI Canvas — Professional Image Editing with Gemini + WASM
 - Tracks: Overall Track, Special Technology Prize — Fal
 - Stack: Next.js 15, TypeScript, Tailwind, custom WASM engine
