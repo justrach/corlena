@@ -126,10 +126,9 @@ export function SceneProvider({ children, tapParams, capacity = 256 }) {
 
   const value = useMemo(() => ({ ready, upsertNode, registerHandlers, applyPointer, getTransform, layerRef, toLocal }), [ready, upsertNode, registerHandlers, applyPointer, getTransform, toLocal]);
 
-  return (
-    <SceneContext.Provider value={value}>
-      {typeof children === 'function' ? children({ ready }) : children}
-    </SceneContext.Provider>
+  return React.createElement(SceneContext.Provider, 
+    { value },
+    typeof children === 'function' ? children({ ready }) : children
   );
 }
 
@@ -145,10 +144,9 @@ export function DomLayer({ style, className, children }) {
     overflow: 'visible',
     ...style,
   };
-  return (
-    <div ref={layerRef} style={merged} className={className}>
-      {children}
-    </div>
+  return React.createElement('div', 
+    { ref: layerRef, style: merged, className },
+    children
   );
 }
 
@@ -250,9 +248,12 @@ export function DomNode({ id, children, style, className, onTap, onDoubleTap, on
 
   const mergedStyle = { position: 'absolute', touchAction: 'none', userSelect: 'none', ...css, ...style };
 
-  return (
-    <div ref={ref} style={mergedStyle} className={className} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
-      {children}
-    </div>
-  );
+  return React.createElement('div', {
+    ref,
+    style: mergedStyle,
+    className,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp
+  }, children);
 }

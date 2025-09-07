@@ -1,7 +1,7 @@
 // Lightweight React bindings for Corlena interactions
 // ESM, no build step required
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 
 export function useDraggable(options = {}) {
   const { initial = { x: 0, y: 0 }, onMove, lockScroll = true } = options;
@@ -46,10 +46,9 @@ export function useDraggable(options = {}) {
 export function Draggable({ children, initial, onMove, style, className }) {
   const d = useDraggable({ initial, onMove });
   const mergedStyle = { position: 'absolute', left: d.x, top: d.y, ...style };
-  return (
-    <div {...d.bind} style={mergedStyle} className={className}>
-      {typeof children === 'function' ? children(d) : children}
-    </div>
+  return React.createElement('div', 
+    { ...d.bind, style: mergedStyle, className }, 
+    typeof children === 'function' ? children(d) : children
   );
 }
 
@@ -96,11 +95,10 @@ export function useResizable(options = {}) {
 export function Resizable({ children, style, className, initial, onResize }) {
   const r = useResizable({ initial, onResize });
   const mergedStyle = { position: 'absolute', width: r.w, height: r.h, ...style };
-  return (
-    <div style={mergedStyle} className={className}>
-      {typeof children === 'function' ? children(r) : children}
-      <div {...r.handleProps} />
-    </div>
+  return React.createElement('div', 
+    { style: mergedStyle, className },
+    typeof children === 'function' ? children(r) : children,
+    React.createElement('div', r.handleProps)
   );
 }
 
