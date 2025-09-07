@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCorlenaCanvas } from '@/lib/corlena-state'
 import { useCanvasInteractions } from '@/lib/canvas-interactions'
+import { useCanvasViewport } from '@/lib/canvas-viewport'
 import { SelectionOverlay } from './selection-overlay'
 
 interface CanvasRendererProps {
@@ -19,6 +20,9 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
   
   const { getAllLayers } = useCorlenaCanvas()
   const layers = getAllLayers()
+  
+  // Use viewport system for infinite canvas
+  const viewport = useCanvasViewport()
   
   // Use the new interaction system
   const interactions = useCanvasInteractions({
@@ -62,20 +66,37 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
     ctx.fillStyle = "#f9fafb" // Light gray background
     ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight)
 
-    // Draw grid pattern
+    // Save context and apply viewport transform
+    ctx.save()
+    ctx.translate(viewport.viewport.x, viewport.viewport.y)
+    ctx.scale(viewport.viewport.zoom, viewport.viewport.zoom)
+
+    // Draw infinite grid pattern
     ctx.strokeStyle = 'rgba(0,0,0,0.03)'
-    ctx.lineWidth = 1
+    ctx.lineWidth = 1 / viewport.viewport.zoom // Keep line width consistent
     const gridSize = 32
-    for (let x = 0; x < canvas.clientWidth; x += gridSize) {
+    
+    // Calculate visible world bounds
+    const topLeft = viewport.screenToWorld(0, 0)
+    const bottomRight = viewport.screenToWorld(canvas.clientWidth, canvas.clientHeight)
+    
+    // Draw vertical grid lines
+    const startX = Math.floor(topLeft.x / gridSize) * gridSize
+    const endX = Math.ceil(bottomRight.x / gridSize) * gridSize
+    for (let x = startX; x <= endX; x += gridSize) {
       ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, canvas.clientHeight)
+      ctx.moveTo(x, topLeft.y - 100)
+      ctx.lineTo(x, bottomRight.y + 100)
       ctx.stroke()
     }
-    for (let y = 0; y < canvas.clientHeight; y += gridSize) {
+    
+    // Draw horizontal grid lines
+    const startY = Math.floor(topLeft.y / gridSize) * gridSize
+    const endY = Math.ceil(bottomRight.y / gridSize) * gridSize
+    for (let y = startY; y <= endY; y += gridSize) {
       ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(canvas.clientWidth, y)
+      ctx.moveTo(topLeft.x - 100, y)
+      ctx.lineTo(bottomRight.x + 100, y)
       ctx.stroke()
     }
 
@@ -86,7 +107,7 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
         const img = imageElements.get(layer.nodeId)
         if (img && img.complete) {
           try {
-            // Get transform from interaction system
+            // Get transform from interaction system (now in world coordinates)
             const baseX = 50 + (layer.nodeId * 120) % 400
             const baseY = 50 + Math.floor((layer.nodeId * 120) / 400) * 180
             const transform = interactions.getLayerTransform(layer.nodeId)
@@ -145,7 +166,10 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
         }
       }
     }
-  }, [layers, selectedLayerId, interactions])
+    
+    // Restore context
+    ctx.restore()
+  }, [layers, selectedLayerId, interactions, viewport])
 
   const animate = useCallback(() => {
     compose()
@@ -228,8 +252,10 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
     })
   }, [layers, interactions])
   
-  // Find which layer is clicked
-  const findClickedLayer = (x: number, y: number) => {
+  // Find which layer is clicked (convert screen to world coordinates)
+  const findClickedLayer = (screenX: number, screenY: number) => {
+    const worldPos = viewport.screenToWorld(screenX, screenY)
+    
     for (const layer of layers.slice().reverse()) { // Check top layers first
       if (layer.type === 'image' && layer.visible) {
         const img = imageElementsRef.current.get(layer.nodeId)
@@ -242,10 +268,7 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
           const w = transform.width
           const h = transform.height
           
-          console.log('🔍 Layer', layer.nodeId, 'bounds:', layerX, layerY, w, h)
-          
-          if (x >= layerX && x <= layerX + w && y >= layerY && y <= layerY + h) {
-            console.log('✅ Clicked on layer:', layer.nodeId)
+          if (worldPos.x >= layerX && worldPos.x <= layerX + w && worldPos.y >= layerY && worldPos.y <= layerY + h) {
             return layer.nodeId
           }
         }
@@ -259,16 +282,20 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
     if (!canvas) return
     
     const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const screenX = e.clientX - rect.left
+    const screenY = e.clientY - rect.top
     
-    const clickedLayer = findClickedLayer(x, y)
+    const clickedLayer = findClickedLayer(screenX, screenY)
     if (clickedLayer) {
+      // Convert screen coordinates to world coordinates for interactions
+      const worldPos = viewport.screenToWorld(screenX, screenY)
       const baseX = 50 + (clickedLayer * 120) % 400
       const baseY = 50 + Math.floor((clickedLayer * 120) / 400) * 180
-      interactions.handleMouseDown(x, y, clickedLayer, baseX, baseY)
+      interactions.handleMouseDown(worldPos.x, worldPos.y, clickedLayer, baseX, baseY)
       onSelectedLayerChange?.(clickedLayer)
     } else {
+      // Start viewport panning if not clicking on layer
+      viewport.handleMouseDown(e)
       interactions.selectLayer(null)
       onSelectedLayerChange?.(null)
     }
@@ -279,13 +306,21 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
     if (!canvas) return
     
     const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const screenX = e.clientX - rect.left
+    const screenY = e.clientY - rect.top
     
-    interactions.handleMouseMove(x, y)
+    // Handle viewport panning
+    viewport.handleMouseMove(e)
+    
+    // Handle layer interactions in world coordinates
+    if (interactions.selectedLayerId) {
+      const worldPos = viewport.screenToWorld(screenX, screenY)
+      interactions.handleMouseMove(worldPos.x, worldPos.y)
+    }
   }
 
   const handleMouseUp = () => {
+    viewport.handleMouseUp()
     interactions.handleMouseUp()
   }
 
@@ -297,12 +332,13 @@ export function CanvasRenderer({ className, selectedLayerId: propSelectedLayerId
         width: '100%',
         height: '100%',
         display: 'block',
-        cursor: 'crosshair',
+        cursor: viewport.isDragging ? 'grabbing' : (interactions.selectedLayerId ? 'crosshair' : 'grab'),
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onWheel={viewport.handleWheel}
     />
   )
 }
